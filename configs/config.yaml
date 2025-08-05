@@ -1,0 +1,39 @@
+env: development
+
+server:
+  port: 8080
+  read_timeout: 10
+  write_timeout: 10
+  idle_timeout: 60
+
+database:
+  host: postgres
+  port: 5432
+  user: alertbot
+  password: password
+  dbname: alertbot
+  sslmode: disable
+  timezone: UTC
+  max_idle_conns: 25
+  max_open_conns: 100
+  conn_max_lifetime: 3600
+  conn_max_idle_time: 1800
+
+logger:
+  level: info
+  format: json
+
+jwt:
+  secret: your-super-secret-jwt-key-change-in-production
+  expiration: 24
+
+rate_limit:
+  enabled: true
+  rps: 100
+  burst: 200
+
+security:
+  bcrypt_cost: 12
+  password_min_len: 8
+  https_only: false
+  trusted_proxies: []

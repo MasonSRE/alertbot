@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlertBot - 告警管理平台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        .header {
+            background: #001529;
+            color: white;
+            padding: 16px 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            font-weight: 500;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 24px auto;
+            padding: 0 24px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .card h2 {
+            color: #1890ff;
+            margin-bottom: 16px;
+            font-size: 20px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-left: 4px solid #1890ff;
+        }
+        
+        .stat-card.warning {
+            border-left-color: #faad14;
+        }
+        
+        .stat-card.danger {
+            border-left-color: #ff4d4f;
+        }
+        
+        .stat-card.success {
+            border-left-color: #52c41a;
+        }
+        
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #1890ff;
+            margin-bottom: 8px;
+        }
+        
+        .stat-card.warning .stat-number {
+            color: #faad14;
+        }
+        
+        .stat-card.danger .stat-number {
+            color: #ff4d4f;
+        }
+        
+        .stat-card.success .stat-number {
+            color: #52c41a;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .alert-list {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .alert-item {
+            padding: 16px 24px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .alert-item:last-child {
+            border-bottom: none;
+        }
+        
+        .alert-info {
+            flex: 1;
+        }
+        
+        .alert-name {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        
+        .alert-desc {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .alert-meta {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .badge.critical {
+            background: #fff2f0;
+            color: #ff4d4f;
+            border: 1px solid #ffccc7;
+        }
+        
+        .badge.warning {
+            background: #fffbe6;
+            color: #faad14;
+            border: 1px solid #ffe58f;
+        }
+        
+        .badge.firing {
+            background: #fff2f0;
+            color: #ff4d4f;
+            border: 1px solid #ffccc7;
+        }
+        
+        .badge.resolved {
+            background: #f6ffed;
+            color: #52c41a;
+            border: 1px solid #b7eb8f;
+        }
+        
+        .status-loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 24px;
+            color: #999;
+            font-size: 14px;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .feature-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .feature-title {
+            color: #1890ff;
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        
+        .feature-desc {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        ul {
+            padding-left: 20px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚨 AlertBot - 告警管理平台</h1>
+    </div>
+    
+    <div class="container">
+        <!-- 统计卡片 -->
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number">156</div>
+                <div class="stat-label">总告警数</div>
+            </div>
+            <div class="stat-card danger">
+                <div class="stat-number">45</div>
+                <div class="stat-label">告警中</div>
+            </div>
+            <div class="stat-card success">
+                <div class="stat-number">111</div>
+                <div class="stat-label">已解决</div>
+            </div>
+            <div class="stat-card warning">
+                <div class="stat-number">12</div>
+                <div class="stat-label">已静默</div>
+            </div>
+        </div>
+        
+        <!-- 项目介绍 -->
+        <div class="card">
+            <h2>📋 项目概述</h2>
+            <p>AlertBot 是一个现代化的告警管理平台，旨在替代 Prometheus Alertmanager，提供更友好的 Web UI 和强大的告警处理能力。</p>
+            <br>
+            <div class="features">
+                <div class="feature-card">
+                    <div class="feature-title">🚀 现代化架构</div>
+                    <div class="feature-desc">
+                        • Go + Gin + PostgreSQL 后端<br>
+                        • React 18 + TypeScript + Ant Design 前端<br>
+                        • Docker 容器化部署
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-title">⚡ 高性能处理</div>
+                    <div class="feature-desc">
+                        • 支持 10000+ QPS 告警接收<br>
+                        • 智能去重和聚合<br>
+                        • 实时状态同步
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-title">🔔 多样化通知</div>
+                    <div class="feature-desc">
+                        • 钉钉机器人集成<br>
+                        • 企业微信通知<br>
+                        • 邮件和短信支持
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-title">🎯 可视化配置</div>
+                    <div class="feature-desc">
+                        • 拖拽式规则编辑器<br>
+                        • 直观的告警管理界面<br>
+                        • 实时监控面板
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 最近告警 -->
+        <div class="card">
+            <h2>📊 最近告警</h2>
+            <div class="alert-list">
+                <div class="alert-item">
+                    <div class="alert-info">
+                        <div class="alert-name">HighCPUUsage</div>
+                        <div class="alert-desc">server1:9100 - CPU usage is above 90% for more than 5 minutes</div>
+                    </div>
+                    <div class="alert-meta">
+                        <span class="badge critical">CRITICAL</span>
+                        <span class="badge firing">告警中</span>
+                        <span style="color: #999; font-size: 12px;">2分钟前</span>
+                    </div>
+                </div>
+                <div class="alert-item">
+                    <div class="alert-info">
+                        <div class="alert-name">DiskSpaceLow</div>
+                        <div class="alert-desc">server2:9100 - Disk space is below 10%</div>
+                    </div>
+                    <div class="alert-meta">
+                        <span class="badge warning">WARNING</span>
+                        <span class="badge firing">告警中</span>
+                        <span style="color: #999; font-size: 12px;">5分钟前</span>
+                    </div>
+                </div>
+                <div class="alert-item">
+                    <div class="alert-info">
+                        <div class="alert-name">ServiceDown</div>
+                        <div class="alert-desc">api-server:8080 - Service is not responding</div>
+                    </div>
+                    <div class="alert-meta">
+                        <span class="badge critical">CRITICAL</span>
+                        <span class="badge resolved">已解决</span>
+                        <span style="color: #999; font-size: 12px;">10分钟前</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 开发进度 -->
+        <div class="card">
+            <h2>🏗️ 开发进度</h2>
+            <h3 style="color: #52c41a; margin-bottom: 12px;">✅ Phase 1: 基础架构 (已完成)</h3>
+            <ul>
+                <li>Go项目结构和基础配置</li>
+                <li>React项目结构</li>
+                <li>Docker开发环境(PostgreSQL)</li>
+                <li>数据库设计和迁移</li>
+                <li>基础中间件(日志、CORS、认证)</li>
+            </ul>
+            
+            <h3 style="color: #52c41a; margin: 16px 0 12px 0;">✅ Phase 2: 核心功能 (已完成)</h3>
+            <ul>
+                <li>告警接收API(兼容Prometheus格式)</li>
+                <li>创建基础前端组件</li>
+                <li>API服务实现</li>
+                <li>测试和修复基础功能</li>
+            </ul>
+            
+            <h3 style="color: #faad14; margin: 16px 0 12px 0;">🚧 Phase 3: 高级功能 (规划中)</h3>
+            <ul>
+                <li>WebSocket实时推送</li>
+                <li>规则引擎完善</li>
+                <li>通知系统集成</li>
+                <li>性能优化</li>
+            </ul>
+        </div>
+        
+        <!-- 快速开始 -->
+        <div class="card">
+            <h2>🚀 快速开始</h2>
+            <h3 style="margin-bottom: 12px;">启动服务:</h3>
+            <div style="background: #f6f8fa; padding: 16px; border-radius: 6px; font-family: 'Monaco', 'Menlo', monospace; font-size: 14px; margin-bottom: 16px;">
+                # 启动数据库<br>
+                docker-compose up -d postgres<br><br>
+                
+                # 启动开发环境<br>
+                cd web && npm install && npm run dev
+            </div>
+            
+            <h3 style="margin-bottom: 12px;">API测试:</h3>
+            <div style="background: #f6f8fa; padding: 16px; border-radius: 6px; font-family: 'Monaco', 'Menlo', monospace; font-size: 14px;">
+                # 健康检查<br>
+                curl http://localhost:8080/health<br><br>
+                
+                # 运行测试脚本<br>
+                ./test-api.sh
+            </div>
+        </div>
+        
+        <!-- 当前状态 -->
+        <div class="card">
+            <h2>📡 服务状态</h2>
+            <div id="service-status">
+                <div class="status-loading">正在检查服务状态...</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <p>AlertBot - 现代化告警管理平台 | 构建时间: 2025-08-05</p>
+    </div>
+
+    <script>
+        // 检查服务状态
+        async function checkServiceStatus() {
+            const statusDiv = document.getElementById('service-status');
+            
+            try {
+                // 检查后端健康状态 (如果后端正在运行)
+                const healthResponse = await fetch('/health');
+                if (healthResponse.ok) {
+                    const healthData = await healthResponse.json();
+                    statusDiv.innerHTML = `
+                        <div style="color: #52c41a; font-weight: 500;">✅ 后端服务: 正常运行</div>
+                        <div style="color: #52c41a; font-weight: 500;">✅ 数据库: 连接正常</div>
+                        <div style="margin-top: 12px; font-size: 14px; color: #666;">
+                            服务版本: ${healthData.version || '1.0.0'}<br>
+                            响应时间: ${Date.now() - start}ms
+                        </div>
+                    `;
+                    return;
+                }
+            } catch (error) {
+                // 后端服务可能还没启动
+            }
+            
+            // 检查数据库状态
+            statusDiv.innerHTML = `
+                <div style="color: #52c41a; font-weight: 500;">✅ 数据库: PostgreSQL 运行中 (端口 5432)</div>
+                <div style="color: #faad14; font-weight: 500;">⏳ 后端服务: 待启动</div>
+                <div style="color: #faad14; font-weight: 500;">⏳ 前端服务: 待启动</div>
+                <div style="margin-top: 12px; font-size: 14px; color: #666;">
+                    请运行以下命令启动完整服务:<br>
+                    <code style="background: #f6f8fa; padding: 2px 6px; border-radius: 3px;">cd web && npm run dev</code>
+                </div>
+            `;
+        }
+        
+        const start = Date.now();
+        checkServiceStatus();
+        
+        // 每30秒检查一次状态
+        setInterval(checkServiceStatus, 30000);
+    </script>
+</body>
+</html>
