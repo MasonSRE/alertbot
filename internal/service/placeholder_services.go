@@ -116,37 +116,4 @@ func (s *silenceService) DeleteSilence(ctx context.Context, id uint) error {
 	return s.deps.Repositories.Silence.Delete(id)
 }
 
-type statsService struct {
-	deps ServiceDependencies
-}
-
-func NewStatsService(deps ServiceDependencies) StatsService {
-	return &statsService{deps: deps}
-}
-
-func (s *statsService) GetAlertStats(ctx context.Context, startTime, endTime string, groupBy string) (*models.Stats, error) {
-	// 占位符实现
-	return &models.Stats{
-		TotalAlerts:  0,
-		FiringAlerts: 0,
-		ResolvedAlerts: 0,
-		Groups: []struct {
-			Key        string  `json:"key"`
-			Count      int     `json:"count"`
-			Percentage float64 `json:"percentage"`
-		}{},
-		Timeline: []struct {
-			Timestamp string `json:"timestamp"`
-			Count     int    `json:"count"`
-		}{},
-	}, nil
-}
-
-func (s *statsService) GetNotificationStats(ctx context.Context, startTime, endTime string) (interface{}, error) {
-	// 占位符实现
-	return map[string]interface{}{
-		"total_sent":   0,
-		"success_rate": 100.0,
-		"failed_count": 0,
-	}, nil
-}
+// Stats service implementation is now in stats_service.go

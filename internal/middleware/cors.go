@@ -13,7 +13,9 @@ func CORS() gin.HandlerFunc {
 		// 允许的源地址列表
 		allowedOrigins := []string{
 			"http://localhost:3000",
+			"http://localhost:3001",
 			"http://127.0.0.1:3000",
+			"http://127.0.0.1:3001",
 			"http://localhost:8080",
 		}
 		

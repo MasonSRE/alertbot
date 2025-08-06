@@ -37,6 +37,15 @@ func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket
 	// API v1路由组
 	v1 := router.Group("/api/v1")
 	{
+		// 认证相关路由（无需认证）
+		authHandler := NewAuthHandler(services)
+		auth := v1.Group("/auth")
+		{
+			auth.POST("/login", authHandler.Login)
+			auth.POST("/logout", authHandler.Logout)
+			auth.POST("/refresh", authHandler.RefreshToken)
+			auth.GET("/profile", authHandler.GetProfile) // In real implementation, this would require JWT auth
+		}
 		// 告警相关路由
 		alertHandler := NewAlertHandler(services)
 		alerts := v1.Group("/alerts")
@@ -81,6 +90,7 @@ func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket
 			silences.POST("", silenceHandler.CreateSilence)
 			silences.GET("/:id", silenceHandler.GetSilence)
 			silences.DELETE("/:id", silenceHandler.DeleteSilence)
+			silences.POST("/test", silenceHandler.TestSilence) // Added test endpoint
 		}
 
 		// 统计相关路由
@@ -89,7 +99,11 @@ func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket
 		{
 			stats.GET("/alerts", statsHandler.GetAlertStats)
 			stats.GET("/notifications", statsHandler.GetNotificationStats)
+			stats.GET("/system", statsHandler.GetSystemStats)
 		}
+
+		// 系统健康检查路由
+		v1.GET("/health", statsHandler.GetHealthStatus)
 
 		// WebSocket路由
 		wsHandler := NewWebSocketHandler(services, logger, hub)

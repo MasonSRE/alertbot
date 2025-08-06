@@ -1,5 +1,7 @@
 # AlertBot 告警管理平台
 
+> ⚠️ **此项目正在开发中，功能未完全通过，请勿部署到生产环境**
+
 ## 项目概述
 
 AlertBot 是一个现代化的告警管理平台，旨在替代 Prometheus Alertmanager，提供更友好的 Web UI 和强大的告警处理能力。

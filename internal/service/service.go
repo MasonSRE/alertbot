@@ -43,6 +43,6 @@ func NewServices(deps ServiceDependencies) *Services {
 		RoutingRule:         NewRoutingRuleService(deps),
 		NotificationChannel: NewNotificationChannelService(deps),
 		Silence:             NewSilenceService(deps),
-		Stats:               NewStatsService(deps),
+		Stats:               NewStatsService(deps), // Implemented in stats_service.go
 	}
 }
