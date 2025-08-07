@@ -35,6 +35,7 @@ export const useAlertGroupRules = () => {
     queryFn: async () => {
       try {
         const response = await alertGroupApi.listRules()
+        // API返回结构: { success: true, data: { items: [...], total: number } }
         return response.data?.data?.items || []
       } catch (error) {
         console.error('Failed to fetch alert group rules:', error)

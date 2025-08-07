@@ -9,13 +9,24 @@ export const useSilences = () => {
     queryFn: async () => {
       try {
         const response = await silenceApi.list()
-        return response.data?.data || []
+        console.log('Silences API response:', response.data) // 调试日志
+        // API返回结构: { success: true, data: { items: [...], total: number } }
+        const items = response.data?.data?.items || []
+        // 确保返回的是数组
+        if (!Array.isArray(items)) {
+          console.error('Silences items is not an array:', items)
+          return []
+        }
+        return items
       } catch (error) {
         console.error('Failed to fetch silences:', error)
         return []
       }
     },
     refetchInterval: 60000, // 60秒自动刷新
+    // 添加错误边界
+    retry: 1,
+    staleTime: 0, // 确保数据及时更新
   })
 }
 

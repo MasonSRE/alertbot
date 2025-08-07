@@ -124,7 +124,7 @@ export const channelApi = {
 export const silenceApi = {
   // 静默相关API
   list: () =>
-    api.get<ApiResponse<Silence[]>>('/silences'),
+    api.get<ApiResponse<PaginatedResponse<Silence>>>('/silences'),
   
   get: (id: number) =>
     api.get<ApiResponse<Silence>>(`/silences/${id}`),
@@ -142,14 +142,14 @@ export const silenceApi = {
 export const alertGroupApi = {
   // 告警分组API
   listGroups: (filters?: any) =>
-    api.get<ApiResponse<any>>('/alert-groups', { params: filters }),
+    api.get<ApiResponse<PaginatedResponse<any>>>('/alert-groups', { params: filters }),
   
   getGroup: (id: number) =>
     api.get<ApiResponse<any>>(`/alert-groups/${id}`),
   
   // 告警分组规则API
   listRules: () =>
-    api.get<ApiResponse<any>>('/alert-group-rules'),
+    api.get<ApiResponse<PaginatedResponse<any>>>('/alert-group-rules'),
   
   getRule: (id: number) =>
     api.get<ApiResponse<any>>(`/alert-group-rules/${id}`),

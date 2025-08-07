@@ -48,16 +48,19 @@ export interface NotificationChannel {
 
 export interface Silence {
   id: number
-  matchers: Array<{
-    name: string
-    value: string
-    is_regex: boolean
-  }>
+  matchers: {
+    matchers: Array<{
+      name: string
+      value: string
+      is_regex: boolean
+    }>
+  }
   starts_at: string
   ends_at: string
   creator: string
   comment: string
   created_at: string
+  status?: string  // 后端返回的状态字段
 }
 
 export interface ApiResponse<T> {

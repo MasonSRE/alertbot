@@ -17,7 +17,17 @@ const Silences: React.FC = () => {
   const [form] = Form.useForm()
   const [testForm] = Form.useForm()
 
-  const { data: silences = [], isLoading, refetch } = useSilences()
+  const { data: silencesRaw = [], isLoading, refetch, error } = useSilences()
+  
+  // 确保 silences 是数组，防止 .some 等数组方法报错
+  const silences = Array.isArray(silencesRaw) ? silencesRaw : []
+  
+  // 如果有错误，显示错误信息
+  React.useEffect(() => {
+    if (error) {
+      console.error('Silences query error:', error)
+    }
+  }, [error])
   const createMutation = useCreateSilence()
   const deleteMutation = useDeleteSilence()
   const testMutation = useTestSilence()
