@@ -6,6 +6,26 @@
 
 AlertBot 是一个现代化的告警管理平台，旨在替代 Prometheus Alertmanager，提供更友好的 Web UI 和强大的告警处理能力。
 
+## 告警处理流程
+
+AlertBot 作为 Prometheus 告警的智能路由系统，工作流程如下：
+
+```
+Prometheus 告警 → AlertBot 接收 → 匹配路由规则 → 发送到对应通知渠道
+```
+
+### 路由规则示例
+
+- **规则1**: `severity=critical` → 发送到钉钉群 + 短信通知
+- **规则2**: `alertname=DatabaseDown` → 发送到 DBA 邮件组
+- **规则3**: `instance` 包含 "prod" → 发送到生产环境告警群
+- **规则4**: `team=frontend` → 发送到前端团队企业微信群
+
+### 与 Prometheus 的区别
+
+- **Prometheus 规则**: 定义什么时候产生告警（alerting rules）
+- **AlertBot 规则**: 定义收到告警后如何路由分发（routing rules）
+
 ## 架构特点
 
 - **后端**: Go + Gin + PostgreSQL + GORM

@@ -16,6 +16,8 @@ type Services struct {
 	NotificationChannel NotificationChannelService
 	Silence          SilenceService
 	Stats            StatsService
+	AlertGroup       AlertGroupService
+	Inhibition       InhibitionService
 }
 
 type ServiceDependencies struct {
@@ -44,5 +46,7 @@ func NewServices(deps ServiceDependencies) *Services {
 		NotificationChannel: NewNotificationChannelService(deps),
 		Silence:             NewSilenceService(deps),
 		Stats:               NewStatsService(deps), // Implemented in stats_service.go
+		AlertGroup:          NewAlertGroupService(deps.Repositories.AlertGroup, deps.Repositories.Alert, deps.Logger),
+		Inhibition:          NewInhibitionService(deps.Repositories.Inhibition, deps.Repositories.Alert, deps.Logger),
 	}
 }

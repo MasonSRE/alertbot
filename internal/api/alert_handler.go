@@ -80,8 +80,6 @@ func (h *AlertHandler) GetAlert(c *gin.Context) {
 		return
 	}
 
-	// For now, just return the alert without history
-	// In a full implementation, you would add a GetAlertHistory method to the AlertService
 	h.response.Success(c, alert, "Alert retrieved successfully")
 }
 
@@ -157,4 +155,126 @@ func (h *AlertHandler) ResolveAlert(c *gin.Context) {
 	}
 
 	h.response.Success(c, nil, "Alert resolved successfully")
+}
+
+func (h *AlertHandler) BatchSilenceAlerts(c *gin.Context) {
+	var req struct {
+		Fingerprints []string `json:"fingerprints" binding:"required"`
+		Duration     string   `json:"duration" binding:"required"`
+		Comment      string   `json:"comment"`
+	}
+
+	if !h.response.BindAndValidate(c, &req) {
+		return
+	}
+
+	if len(req.Fingerprints) == 0 {
+		h.response.BadRequest(c, "No alert fingerprints provided", nil)
+		return
+	}
+
+	err := h.services.Alert.BatchSilenceAlerts(c.Request.Context(), req.Fingerprints, req.Duration, req.Comment)
+	if err != nil {
+		h.response.InternalServerError(c, "Failed to batch silence alerts", err.Error())
+		return
+	}
+
+	h.response.Success(c, gin.H{
+		"processed": len(req.Fingerprints),
+		"action":    "silenced",
+	}, "Alerts silenced successfully")
+}
+
+func (h *AlertHandler) BatchAcknowledgeAlerts(c *gin.Context) {
+	var req struct {
+		Fingerprints []string `json:"fingerprints" binding:"required"`
+		Comment      string   `json:"comment"`
+	}
+
+	if !h.response.BindAndValidate(c, &req) {
+		return
+	}
+
+	if len(req.Fingerprints) == 0 {
+		h.response.BadRequest(c, "No alert fingerprints provided", nil)
+		return
+	}
+
+	err := h.services.Alert.BatchAcknowledgeAlerts(c.Request.Context(), req.Fingerprints, req.Comment)
+	if err != nil {
+		h.response.InternalServerError(c, "Failed to batch acknowledge alerts", err.Error())
+		return
+	}
+
+	h.response.Success(c, gin.H{
+		"processed": len(req.Fingerprints),
+		"action":    "acknowledged",
+	}, "Alerts acknowledged successfully")
+}
+
+func (h *AlertHandler) BatchResolveAlerts(c *gin.Context) {
+	var req struct {
+		Fingerprints []string `json:"fingerprints" binding:"required"`
+		Comment      string   `json:"comment"`
+	}
+
+	if !h.response.BindAndValidate(c, &req) {
+		return
+	}
+
+	if len(req.Fingerprints) == 0 {
+		h.response.BadRequest(c, "No alert fingerprints provided", nil)
+		return
+	}
+
+	err := h.services.Alert.BatchResolveAlerts(c.Request.Context(), req.Fingerprints, req.Comment)
+	if err != nil {
+		h.response.InternalServerError(c, "Failed to batch resolve alerts", err.Error())
+		return
+	}
+
+	h.response.Success(c, gin.H{
+		"processed": len(req.Fingerprints),
+		"action":    "resolved",
+	}, "Alerts resolved successfully")
+}
+
+func (h *AlertHandler) GetAlertHistory(c *gin.Context) {
+	fingerprint := c.Param("fingerprint")
+	if fingerprint == "" {
+		h.response.BadRequest(c, "Alert fingerprint is required", nil)
+		return
+	}
+
+	history, err := h.services.Alert.GetAlertHistory(c.Request.Context(), fingerprint)
+	if err != nil {
+		h.response.InternalServerError(c, "Failed to retrieve alert history", err.Error())
+		return
+	}
+
+	h.response.Success(c, history, "Alert history retrieved successfully")
+}
+
+func (h *AlertHandler) ListAlertHistory(c *gin.Context) {
+	var filters models.AlertHistoryFilters
+	if !h.response.BindQueryAndValidate(c, &filters) {
+		return
+	}
+
+	history, total, err := h.services.Alert.ListAlertHistory(c.Request.Context(), filters)
+	if err != nil {
+		h.response.InternalServerError(c, "Failed to retrieve alert history", err.Error())
+		return
+	}
+
+	page := filters.Page
+	if page == 0 {
+		page = 1
+	}
+	size := filters.Size
+	if size == 0 {
+		size = 50
+	}
+
+	h.response.Paginated(c, history, total, page, size, "Alert history retrieved successfully")
 }

@@ -1,0 +1,25 @@
+# Node.js based frontend server with proxy
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies only
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Copy server script
+COPY http-server.js .
+
+# Expose port 3000
+EXPOSE 3000
+
+# Start the application
+CMD ["node", "http-server.js"]

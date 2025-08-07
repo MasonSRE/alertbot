@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"context"
+
 	"alertbot/internal/models"
 
 	"gorm.io/gorm"
@@ -12,6 +14,8 @@ type Repositories struct {
 	NotificationChannel NotificationChannelRepository
 	Silence             SilenceRepository
 	AlertHistory        AlertHistoryRepository
+	AlertGroup          AlertGroupRepository
+	Inhibition          InhibitionRepository
 }
 
 type AlertRepository interface {
@@ -51,6 +55,32 @@ type SilenceRepository interface {
 type AlertHistoryRepository interface {
 	Create(history *models.AlertHistory) error
 	GetByAlertFingerprint(fingerprint string) ([]models.AlertHistory, error)
+	GetByFingerprint(fingerprint string) ([]models.AlertHistory, error)
+	List(filters models.AlertHistoryFilters) ([]models.AlertHistory, int64, error)
+}
+
+type InhibitionRepository interface {
+	Create(rule *models.InhibitionRule) error
+	GetByID(id uint) (*models.InhibitionRule, error)
+	List() ([]models.InhibitionRule, error)
+	Update(rule *models.InhibitionRule) error
+	Delete(id uint) error
+	
+	// Service methods
+	ListInhibitionRules(ctx context.Context) ([]*models.InhibitionRule, error)
+	GetInhibitionRule(ctx context.Context, id uint) (*models.InhibitionRule, error)
+	CreateInhibitionRule(ctx context.Context, rule *models.InhibitionRule) error
+	UpdateInhibitionRule(ctx context.Context, rule *models.InhibitionRule) error
+	DeleteInhibitionRule(ctx context.Context, id uint) error
+	GetActiveInhibitionRules(ctx context.Context) ([]*models.InhibitionRule, error)
+	
+	// Inhibition status methods
+	CreateInhibitionStatus(ctx context.Context, status *models.InhibitionStatus) error
+	DeleteInhibitionStatus(ctx context.Context, id uint) error
+	GetInhibitionsByTarget(ctx context.Context, targetFingerprint string) ([]*models.InhibitionStatus, error)
+	GetInhibitionsBySource(ctx context.Context, sourceFingerprint string) ([]*models.InhibitionStatus, error)
+	CleanupExpiredInhibitions(ctx context.Context) error
+	GetActiveInhibitions(ctx context.Context) ([]*models.InhibitionStatus, error)
 }
 
 func NewRepositories(db *gorm.DB) *Repositories {
@@ -60,5 +90,7 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		NotificationChannel: NewNotificationChannelRepository(db),
 		Silence:             NewSilenceRepository(db),
 		AlertHistory:        NewAlertHistoryRepository(db),
+		AlertGroup:          NewAlertGroupRepository(db),
+		Inhibition:          NewInhibitionRepository(db),
 	}
 }

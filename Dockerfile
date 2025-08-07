@@ -10,7 +10,7 @@ RUN go mod tidy && go mod download
 
 COPY . .
 
-ENV GOPROXY=https://goproxy.cn,direct
+ENV GOPROXY=https://proxy.golang.org,direct
 ENV GOSUMDB=off
 RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o alertbot cmd/server/main.go
 

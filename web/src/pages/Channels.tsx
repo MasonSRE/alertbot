@@ -1,47 +1,24 @@
 import React, { useState } from 'react'
-import { Card, Table, Button, Space, Switch, Modal, Form, Input, Select, Tag, message } from 'antd'
+import { Card, Table, Button, Space, Switch, Modal, Form, Input, Select, Tag, InputNumber } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, SendOutlined } from '@ant-design/icons'
+import { useChannels, useCreateChannel, useUpdateChannel, useDeleteChannel, useTestChannel } from '@/hooks/useChannels'
 import type { ColumnsType } from 'antd/es/table'
 import type { NotificationChannel } from '@/types'
 
 const Channels: React.FC = () => {
-  const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [testModalVisible, setTestModalVisible] = useState(false)
   const [editingChannel, setEditingChannel] = useState<NotificationChannel | null>(null)
   const [testingChannel, setTestingChannel] = useState<NotificationChannel | null>(null)
   const [form] = Form.useForm()
   const [testForm] = Form.useForm()
+  const [selectedChannelType, setSelectedChannelType] = useState<string>('')
 
-  // 模拟数据
-  const channels: NotificationChannel[] = [
-    {
-      id: 1,
-      name: 'DingTalk On-Call',
-      type: 'dingtalk',
-      config: {
-        webhook_url: 'https://oapi.dingtalk.com/robot/send?access_token=***',
-        secret: '***',
-      },
-      enabled: true,
-      created_at: '2025-08-05T08:00:00Z',
-      updated_at: '2025-08-05T08:00:00Z',
-    },
-    {
-      id: 2,
-      name: 'Email Notifications',
-      type: 'email',
-      config: {
-        smtp_host: 'smtp.gmail.com',
-        smtp_port: 587,
-        from: 'alerts@company.com',
-        to: ['admin@company.com'],
-      },
-      enabled: true,
-      created_at: '2025-08-05T08:00:00Z',
-      updated_at: '2025-08-05T08:00:00Z',
-    },
-  ]
+  const { data: channels = [], isLoading, refetch } = useChannels()
+  const createMutation = useCreateChannel()
+  const updateMutation = useUpdateChannel()
+  const deleteMutation = useDeleteChannel()
+  const testMutation = useTestChannel()
 
   const channelTypeOptions = [
     { label: '钉钉', value: 'dingtalk' },
@@ -88,6 +65,7 @@ const Channels: React.FC = () => {
       key: 'config',
       ellipsis: true,
       render: (config: any) => {
+        if (!config || typeof config !== 'object') return null
         const keys = Object.keys(config).slice(0, 2)
         return keys.map(key => (
           <Tag key={key} style={{ margin: '2px' }}>
@@ -113,7 +91,7 @@ const Channels: React.FC = () => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 150,
-      render: (time: string) => new Date(time).toLocaleString(),
+      render: (time: string) => time ? new Date(time).toLocaleString() : '--',
     },
     {
       title: '操作',
@@ -150,16 +128,19 @@ const Channels: React.FC = () => {
 
   const handleCreate = () => {
     setEditingChannel(null)
+    setSelectedChannelType('')
     form.resetFields()
     setModalVisible(true)
   }
 
   const handleEdit = (channel: NotificationChannel) => {
     setEditingChannel(channel)
+    setSelectedChannelType(channel.type)
     form.setFieldsValue({
       name: channel.name,
       type: channel.type,
       enabled: channel.enabled,
+      ...channel.config
     })
     setModalVisible(true)
   }
@@ -169,7 +150,7 @@ const Channels: React.FC = () => {
       title: '确认删除渠道',
       content: `确定要删除渠道 "${channel.name}" 吗？`,
       onOk() {
-        message.success(`渠道 ${channel.name} 已删除`)
+        deleteMutation.mutate(channel.id)
       },
     })
   }
@@ -181,20 +162,43 @@ const Channels: React.FC = () => {
   }
 
   const handleToggleEnabled = (id: number, enabled: boolean) => {
-    message.success(`渠道状态已${enabled ? '启用' : '禁用'}`)
+    const channel = channels.find(c => c.id === id)
+    if (channel) {
+      updateMutation.mutate({ id, data: { ...channel, enabled } })
+    }
   }
 
   const handleSubmit = (values: any) => {
+    const configData = { ...values }
+    delete configData.name
+    delete configData.type
+    delete configData.enabled
+    
+    const channelData = {
+      name: values.name,
+      type: values.type,
+      enabled: values.enabled ?? true,
+      config: configData
+    }
+    
     if (editingChannel) {
-      message.success(`渠道 ${values.name} 已更新`)
+      updateMutation.mutate({ 
+        id: editingChannel.id, 
+        data: channelData 
+      })
     } else {
-      message.success(`渠道 ${values.name} 已创建`)
+      createMutation.mutate(channelData)
     }
     setModalVisible(false)
   }
 
   const handleTestSubmit = (values: any) => {
-    message.success(`测试消息已发送到 ${testingChannel?.name}`)
+    if (testingChannel) {
+      testMutation.mutate({ 
+        id: testingChannel.id, 
+        message: values.message 
+      })
+    }
     setTestModalVisible(false)
   }
 
@@ -206,14 +210,14 @@ const Channels: React.FC = () => {
             <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
               创建渠道
             </Button>
-            <Button onClick={() => setLoading(true)}>刷新</Button>
+            <Button onClick={() => refetch()}>刷新</Button>
           </Space>
         </div>
 
         <Table
           columns={columns}
           dataSource={channels}
-          loading={loading}
+          loading={isLoading}
           rowKey="id"
           pagination={{
             showSizeChanger: true,
@@ -244,7 +248,13 @@ const Channels: React.FC = () => {
             label="渠道类型"
             rules={[{ required: true, message: '请选择渠道类型' }]}
           >
-            <Select placeholder="请选择渠道类型">
+            <Select 
+              placeholder="请选择渠道类型"
+              onChange={(value) => {
+                setSelectedChannelType(value)
+                form.resetFields(['webhook_url', 'secret', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'from', 'to', 'corp_id', 'corp_secret', 'agent_id', 'api_key', 'template_id', 'sign_name'])
+              }}
+            >
               {channelTypeOptions.map(option => (
                 <Select.Option key={option.value} value={option.value}>
                   {option.label}
@@ -252,6 +262,117 @@ const Channels: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
+          
+          {/* DingTalk配置 */}
+          {selectedChannelType === 'dingtalk' && (
+            <>
+              <Form.Item
+                name="webhook_url"
+                label="Webhook URL"
+                rules={[{ required: true, message: '请输入DingTalk机器人Webhook URL' }]}
+              >
+                <Input placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." />
+              </Form.Item>
+              <Form.Item name="secret" label="加签密钥">
+                <Input.Password placeholder="SEC..." />
+              </Form.Item>
+            </>
+          )}
+
+          {/* WeChat Work配置 */}
+          {selectedChannelType === 'wechat_work' && (
+            <>
+              <Form.Item
+                name="webhook_url"
+                label="Webhook URL"
+                rules={[{ required: true, message: '请输入企业微信机器人Webhook URL' }]}
+              >
+                <Input placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." />
+              </Form.Item>
+            </>
+          )}
+
+          {/* Email配置 */}
+          {selectedChannelType === 'email' && (
+            <>
+              <Form.Item
+                name="smtp_host"
+                label="SMTP服务器"
+                rules={[{ required: true, message: '请输入SMTP服务器地址' }]}
+              >
+                <Input placeholder="smtp.gmail.com" />
+              </Form.Item>
+              <Form.Item
+                name="smtp_port"
+                label="SMTP端口"
+                rules={[{ required: true, message: '请输入SMTP端口' }]}
+              >
+                <InputNumber placeholder="587" style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item
+                name="smtp_username"
+                label="用户名"
+                rules={[{ required: true, message: '请输入SMTP用户名' }]}
+              >
+                <Input placeholder="your-email@gmail.com" />
+              </Form.Item>
+              <Form.Item
+                name="smtp_password"
+                label="密码"
+                rules={[{ required: true, message: '请输入SMTP密码' }]}
+              >
+                <Input.Password placeholder="应用专用密码" />
+              </Form.Item>
+              <Form.Item
+                name="from"
+                label="发件人"
+                rules={[{ required: true, message: '请输入发件人邮箱' }]}
+              >
+                <Input placeholder="alerts@company.com" />
+              </Form.Item>
+              <Form.Item
+                name="to"
+                label="收件人"
+                rules={[{ required: true, message: '请输入收件人邮箱' }]}
+              >
+                <Input placeholder="admin@company.com,ops@company.com" />
+              </Form.Item>
+            </>
+          )}
+
+          {/* SMS配置 */}
+          {selectedChannelType === 'sms' && (
+            <>
+              <Form.Item
+                name="api_key"
+                label="API密钥"
+                rules={[{ required: true, message: '请输入SMS服务商API密钥' }]}
+              >
+                <Input.Password placeholder="您的SMS API密钥" />
+              </Form.Item>
+              <Form.Item
+                name="template_id"
+                label="短信模板ID"
+                rules={[{ required: true, message: '请输入短信模板ID' }]}
+              >
+                <Input placeholder="SMS_123456" />
+              </Form.Item>
+              <Form.Item
+                name="sign_name"
+                label="签名"
+                rules={[{ required: true, message: '请输入短信签名' }]}
+              >
+                <Input placeholder="【公司名称】" />
+              </Form.Item>
+              <Form.Item
+                name="to"
+                label="接收手机号"
+                rules={[{ required: true, message: '请输入接收手机号' }]}
+              >
+                <Input placeholder="13800138000,13900139000" />
+              </Form.Item>
+            </>
+          )}
           
           <Form.Item name="enabled" label="启用状态" valuePropName="checked">
             <Switch />

@@ -56,6 +56,17 @@ func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket
 			alerts.PUT("/:fingerprint/silence", alertHandler.SilenceAlert)
 			alerts.PUT("/:fingerprint/ack", alertHandler.AcknowledgeAlert)
 			alerts.DELETE("/:fingerprint", alertHandler.ResolveAlert)
+			alerts.GET("/:fingerprint/history", alertHandler.GetAlertHistory)
+			// 批量操作路由
+			alerts.PUT("/batch/silence", alertHandler.BatchSilenceAlerts)
+			alerts.PUT("/batch/ack", alertHandler.BatchAcknowledgeAlerts)
+			alerts.DELETE("/batch/resolve", alertHandler.BatchResolveAlerts)
+		}
+		
+		// 告警历史路由
+		alertHistory := v1.Group("/alert-history")
+		{
+			alertHistory.GET("", alertHandler.ListAlertHistory)
 		}
 
 		// 规则相关路由
@@ -93,6 +104,37 @@ func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket
 			silences.POST("/test", silenceHandler.TestSilence) // Added test endpoint
 		}
 
+		// 抑制规则相关路由
+		inhibitionHandler := NewInhibitionHandler(services)
+		inhibitions := v1.Group("/inhibitions")
+		{
+			inhibitions.GET("", inhibitionHandler.ListInhibitionRules)
+			inhibitions.POST("", inhibitionHandler.CreateInhibitionRule)
+			inhibitions.GET("/:id", inhibitionHandler.GetInhibitionRule)
+			inhibitions.PUT("/:id", inhibitionHandler.UpdateInhibitionRule)
+			inhibitions.DELETE("/:id", inhibitionHandler.DeleteInhibitionRule)
+			inhibitions.POST("/test", inhibitionHandler.TestInhibitionRule)
+		}
+
+		// 告警分组相关路由
+		groupHandler := NewAlertGroupHandler(services)
+		groups := v1.Group("/alert-groups")
+		{
+			groups.GET("", groupHandler.ListAlertGroups)
+			groups.GET("/:id", groupHandler.GetAlertGroup)
+		}
+		
+		// 告警分组规则相关路由
+		groupRules := v1.Group("/alert-group-rules")
+		{
+			groupRules.GET("", groupHandler.ListAlertGroupRules)
+			groupRules.POST("", groupHandler.CreateAlertGroupRule)
+			groupRules.GET("/:id", groupHandler.GetAlertGroupRule)
+			groupRules.PUT("/:id", groupHandler.UpdateAlertGroupRule)
+			groupRules.DELETE("/:id", groupHandler.DeleteAlertGroupRule)
+			groupRules.POST("/test", groupHandler.TestAlertGroupRule)
+		}
+
 		// 统计相关路由
 		statsHandler := NewStatsHandler(services)
 		stats := v1.Group("/stats")
@@ -104,6 +146,19 @@ func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket
 
 		// 系统健康检查路由
 		v1.GET("/health", statsHandler.GetHealthStatus)
+
+		// 设置相关路由
+		settingsHandler := NewSettingsHandler()
+		settings := v1.Group("/settings")
+		{
+			settings.GET("/system", settingsHandler.GetSystemSettings)
+			settings.PUT("/system", settingsHandler.UpdateSystemSettings)
+			settings.GET("/prometheus", settingsHandler.GetPrometheusSettings)
+			settings.PUT("/prometheus", settingsHandler.UpdatePrometheusSettings)
+			settings.POST("/prometheus/test", settingsHandler.TestPrometheusConnection)
+			settings.GET("/notification", settingsHandler.GetNotificationSettings)
+			settings.PUT("/notification", settingsHandler.UpdateNotificationSettings)
+		}
 
 		// WebSocket路由
 		wsHandler := NewWebSocketHandler(services, logger, hub)

@@ -1,40 +1,20 @@
 import React, { useState } from 'react'
-import { Card, Table, Button, Space, Switch, Modal, Form, Input, Select, Tag, message } from 'antd'
+import { Card, Table, Button, Space, Switch, Modal, Form, Input, Tag, Alert } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons'
+import { useRules, useCreateRule, useUpdateRule, useDeleteRule, useTestRule } from '@/hooks/useRules'
 import type { ColumnsType } from 'antd/es/table'
 import type { RoutingRule } from '@/types'
 
 const Rules: React.FC = () => {
-  const [loading, setLoading] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editingRule, setEditingRule] = useState<RoutingRule | null>(null)
   const [form] = Form.useForm()
 
-  // 模拟数据
-  const rules: RoutingRule[] = [
-    {
-      id: 1,
-      name: 'Critical Alerts',
-      description: '严重告警路由规则',
-      conditions: { severity: 'critical' },
-      receivers: [{ channel_id: 1, template: 'critical_template' }],
-      priority: 100,
-      enabled: true,
-      created_at: '2025-08-05T09:00:00Z',
-      updated_at: '2025-08-05T09:00:00Z',
-    },
-    {
-      id: 2,
-      name: 'Database Alerts',
-      description: '数据库告警路由规则',
-      conditions: { job: 'mysql-exporter', severity: ['warning', 'critical'] },
-      receivers: [{ channel_id: 2, template: 'database_template' }],
-      priority: 80,
-      enabled: true,
-      created_at: '2025-08-05T09:00:00Z',
-      updated_at: '2025-08-05T09:00:00Z',
-    },
-  ]
+  const { data: rules = [], isLoading, refetch } = useRules()
+  const createMutation = useCreateRule()
+  const updateMutation = useUpdateRule()
+  const deleteMutation = useDeleteRule()
+  const testMutation = useTestRule()
 
   const columns: ColumnsType<RoutingRule> = [
     {
@@ -55,11 +35,13 @@ const Rules: React.FC = () => {
       key: 'conditions',
       render: (conditions: any) => (
         <div>
-          {Object.entries(conditions).map(([key, value]) => (
-            <Tag key={key} style={{ margin: '2px' }}>
-              {key}: {Array.isArray(value) ? value.join(', ') : String(value)}
-            </Tag>
-          ))}
+          {conditions && typeof conditions === 'object' ? 
+            Object.entries(conditions).map(([key, value]) => (
+              <Tag key={key} style={{ margin: '2px' }}>
+                {key}: {Array.isArray(value) ? value.join(', ') : String(value)}
+              </Tag>
+            )) : null
+          }
         </div>
       ),
     },
@@ -87,7 +69,7 @@ const Rules: React.FC = () => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 150,
-      render: (time: string) => new Date(time).toLocaleString(),
+      render: (time: string) => time ? new Date(time).toLocaleString() : '--',
     },
     {
       title: '操作',
@@ -144,44 +126,80 @@ const Rules: React.FC = () => {
       title: '确认删除规则',
       content: `确定要删除规则 "${rule.name}" 吗？`,
       onOk() {
-        message.success(`规则 ${rule.name} 已删除`)
+        deleteMutation.mutate(rule.id)
       },
     })
   }
 
   const handleTestRule = (rule: RoutingRule) => {
-    message.info(`正在测试规则 ${rule.name}...`)
+    // 创建一个测试告警示例
+    const sampleAlert = {
+      labels: {
+        alertname: 'TestAlert',
+        instance: 'localhost:9100',
+        job: 'node-exporter',
+        severity: 'warning'
+      },
+      annotations: {
+        description: '这是一个测试告警',
+        summary: '测试告警摘要'
+      }
+    }
+    
+    testMutation.mutate({
+      conditions: rule.conditions,
+      sample_alert: sampleAlert
+    })
   }
 
-  const handleToggleEnabled = (id: number, enabled: boolean) => {
-    message.success(`规则状态已${enabled ? '启用' : '禁用'}`)
+  const handleToggleEnabled = (ruleId: number, enabled: boolean) => {
+    const rule = rules.find(r => r.id === ruleId)
+    if (rule) {
+      updateMutation.mutate({ id: ruleId, data: { ...rule, enabled } })
+    }
   }
 
   const handleSubmit = (values: any) => {
+    const ruleData = {
+      name: values.name,
+      description: values.description,
+      conditions: { severity: values.severity }, // 简化的条件，实际上应该支持更复杂的条件
+      receivers: { channels: [] },
+      priority: values.priority,
+      enabled: values.enabled ?? true
+    }
+    
     if (editingRule) {
-      message.success(`规则 ${values.name} 已更新`)
+      updateMutation.mutate({ id: editingRule.id, data: ruleData })
     } else {
-      message.success(`规则 ${values.name} 已创建`)
+      createMutation.mutate(ruleData)
     }
     setModalVisible(false)
   }
 
   return (
     <div>
+      <Alert
+        message="告警路由规则说明"
+        description="路由规则用于将来自 Prometheus 的告警按照条件匹配，自动路由到相应的通知渠道。与 Prometheus 的 alerting rules 不同，这里的规则是用于 AlertBot 系统内部的路由逻辑。"
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+      />
       <Card>
         <div style={{ marginBottom: 16 }}>
           <Space>
             <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
               创建规则
             </Button>
-            <Button onClick={() => setLoading(true)}>刷新</Button>
+            <Button onClick={() => refetch()}>刷新</Button>
           </Space>
         </div>
 
         <Table
           columns={columns}
           dataSource={rules}
-          loading={loading}
+          loading={isLoading}
           rowKey="id"
           pagination={{
             showSizeChanger: true,

@@ -94,6 +94,15 @@ type AlertFilters struct {
 	Order     string `json:"order" form:"order"`
 }
 
+type AlertHistoryFilters struct {
+	AlertFingerprint string `json:"alert_fingerprint" form:"alert_fingerprint"`
+	Action           string `json:"action" form:"action"`
+	Page             int    `json:"page" form:"page"`
+	Size             int    `json:"size" form:"size"`
+	Sort             string `json:"sort" form:"sort"`
+	Order            string `json:"order" form:"order"`
+}
+
 type PrometheusAlert struct {
 	Labels       map[string]string `json:"labels"`
 	Annotations  map[string]string `json:"annotations"`
@@ -127,6 +136,63 @@ const (
 	ChannelTypeEmail      NotificationChannelType = "email"
 	ChannelTypeSMS        NotificationChannelType = "sms"
 )
+
+// AlertGroup represents a group of alerts that share common characteristics
+type AlertGroup struct {
+	ID            uint      `json:"id" gorm:"primaryKey"`
+	GroupKey      string    `json:"group_key" gorm:"size:255;not null;uniqueIndex"` // Hash of grouping labels
+	GroupBy       JSONB     `json:"group_by" gorm:"type:jsonb;not null"`            // Labels used for grouping
+	CommonLabels  JSONB     `json:"common_labels" gorm:"type:jsonb;not null"`       // Common labels across all alerts
+	AlertCount    int       `json:"alert_count" gorm:"default:0"`                   // Number of alerts in group
+	Status        string    `json:"status" gorm:"size:20;default:firing;index"`     // Group status (firing, resolved)
+	Severity      string    `json:"severity" gorm:"size:20;default:warning;index"`  // Highest severity in group
+	FirstAlertAt  time.Time `json:"first_alert_at"`                                 // Time of first alert in group
+	LastAlertAt   time.Time `json:"last_alert_at"`                                  // Time of last alert in group
+	CreatedAt     time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt     time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+// AlertGroupRule defines how alerts should be grouped
+type AlertGroupRule struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	Name        string    `json:"name" gorm:"size:255;not null"`
+	Description string    `json:"description" gorm:"type:text"`
+	GroupBy     JSONB     `json:"group_by" gorm:"type:jsonb;not null"`     // Labels to group by
+	GroupWait   int       `json:"group_wait" gorm:"default:10"`            // Seconds to wait before sending initial notification
+	GroupInterval int     `json:"group_interval" gorm:"default:300"`       // Seconds between group updates
+	RepeatInterval int    `json:"repeat_interval" gorm:"default:3600"`     // Seconds before repeating notifications
+	Matchers    JSONB     `json:"matchers" gorm:"type:jsonb"`               // Optional matchers to filter alerts
+	Priority    int       `json:"priority" gorm:"default:0;index"`         // Rule priority (higher = more important)
+	Enabled     bool      `json:"enabled" gorm:"default:true"`
+	CreatedAt   time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt   time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+// InhibitionRule defines conditions to suppress alerts based on other alerts
+type InhibitionRule struct {
+	ID              uint      `json:"id" gorm:"primaryKey"`
+	Name            string    `json:"name" gorm:"size:255;not null"`
+	Description     string    `json:"description" gorm:"type:text"`
+	SourceMatchers  JSONB     `json:"source_matchers" gorm:"type:jsonb;not null"`  // Matchers for source alerts (inhibitors)
+	TargetMatchers  JSONB     `json:"target_matchers" gorm:"type:jsonb;not null"`  // Matchers for target alerts (to be inhibited)
+	EqualLabels     JSONB     `json:"equal_labels" gorm:"type:jsonb"`              // Labels that must be equal between source and target
+	Duration        int       `json:"duration" gorm:"default:0"`                   // How long source alert must be active (seconds)
+	Priority        int       `json:"priority" gorm:"default:0;index"`             // Rule priority
+	Enabled         bool      `json:"enabled" gorm:"default:true"`
+	CreatedAt       time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt       time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+// InhibitionStatus tracks which alerts are currently inhibited
+type InhibitionStatus struct {
+	ID                uint      `json:"id" gorm:"primaryKey"`
+	SourceFingerprint string    `json:"source_fingerprint" gorm:"size:64;not null;index"` // Alert causing inhibition
+	TargetFingerprint string    `json:"target_fingerprint" gorm:"size:64;not null;index"` // Alert being inhibited
+	RuleID            uint      `json:"rule_id" gorm:"not null;index"`                     // Inhibition rule applied
+	InhibitedAt       time.Time `json:"inhibited_at" gorm:"not null"`                     // When inhibition started
+	ExpiresAt         *time.Time `json:"expires_at"`                                       // When inhibition expires (if any)
+	CreatedAt         time.Time `json:"created_at" gorm:"autoCreateTime"`
+}
 
 type Stats struct {
 	TotalAlerts    int `json:"total_alerts"`

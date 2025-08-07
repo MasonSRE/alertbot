@@ -35,6 +35,10 @@ func (m *Migrator) Migrate() error {
 		&models.NotificationChannel{},
 		&models.Silence{},
 		&models.AlertHistory{},
+		&models.AlertGroup{},
+		&models.AlertGroupRule{},
+		&models.InhibitionRule{},
+		&models.InhibitionStatus{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to auto-migrate models: %w", err)

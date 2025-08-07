@@ -7,8 +7,27 @@ export const useAlerts = (filters: AlertFilters) => {
   return useQuery({
     queryKey: ['alerts', filters],
     queryFn: async () => {
-      const response = await alertApi.list(filters)
-      return response.data.data
+      try {
+        const response = await alertApi.list(filters)
+        const data = response.data?.data
+        // 确保返回的数据有正确的结构
+        return {
+          items: Array.isArray(data?.items) ? data.items : [],
+          total: data?.total || 0,
+          page: data?.page || 1,
+          size: data?.size || 20,
+          pages: data?.pages || 1
+        }
+      } catch (error) {
+        console.error('Failed to fetch alerts:', error)
+        return {
+          items: [],
+          total: 0,
+          page: 1,
+          size: 20,
+          pages: 1
+        }
+      }
     },
     refetchInterval: 30000, // 30秒自动刷新
   })
@@ -69,6 +88,55 @@ export const useResolveAlert = () => {
     },
     onError: (error: any) => {
       message.error(`解决失败: ${error.message}`)
+    },
+  })
+}
+
+// 批量操作 hooks
+export const useBatchSilenceAlerts = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ fingerprints, duration, comment }: { fingerprints: string[]; duration: string; comment?: string }) =>
+      alertApi.batchSilence({ fingerprints, duration, comment }),
+    onSuccess: (data) => {
+      message.success(`批量静默成功，处理了 ${data?.data?.data?.processed || 0} 个告警`)
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+    },
+    onError: (error: any) => {
+      message.error(`批量静默失败: ${error.message}`)
+    },
+  })
+}
+
+export const useBatchAcknowledgeAlerts = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ fingerprints, comment }: { fingerprints: string[]; comment?: string }) =>
+      alertApi.batchAcknowledge({ fingerprints, comment }),
+    onSuccess: (data) => {
+      message.success(`批量确认成功，处理了 ${data?.data?.data?.processed || 0} 个告警`)
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+    },
+    onError: (error: any) => {
+      message.error(`批量确认失败: ${error.message}`)
+    },
+  })
+}
+
+export const useBatchResolveAlerts = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation({
+    mutationFn: ({ fingerprints, comment }: { fingerprints: string[]; comment?: string }) =>
+      alertApi.batchResolve({ fingerprints, comment }),
+    onSuccess: (data) => {
+      message.success(`批量解决成功，处理了 ${data?.data?.data?.processed || 0} 个告警`)
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+    },
+    onError: (error: any) => {
+      message.error(`批量解决失败: ${error.message}`)
     },
   })
 }

@@ -8,22 +8,79 @@ AlertBot is a modern alert management platform designed to replace Prometheus Al
 
 ## Development Commands
 
-### Environment Setup
+### Environment Setup (Full Docker Stack)
 ```bash
+# Start all services (Database + Backend + Frontend)
+docker-compose up -d
+
+# Or start services individually:
 # Start PostgreSQL database
 docker-compose up -d postgres
 
-# Run database migration
+# Run database migration (if needed)
 go run cmd/migrate/main.go
 
 # Start backend server
-go run cmd/server/main.go
+docker-compose up -d alertbot
 
-# Start frontend development server (in web/ directory)
-cd web
-npm install
-npm run dev
+# Start frontend
+docker-compose up -d frontend
 ```
+
+### ⚠️ IMPORTANT: Full Docker Deployment
+**ALL services now run in Docker containers for consistency:**
+
+```bash
+# ✅ CORRECT: Start all services with Docker
+docker-compose up -d
+
+# ✅ CORRECT: Start individual services
+docker-compose up -d postgres alertbot frontend
+
+# ❌ WRONG: Do not start services directly
+# go run cmd/server/main.go
+# cd web && npm run dev
+```
+
+**Benefits of Full Docker Stack:**
+- Consistent environment across all services
+- Proper service networking and dependencies
+- Production-like deployment setup
+- Unified service management and health checks
+- No need for local Node.js or Go installations
+
+### Service Status Verification
+After starting all services, verify they're running correctly:
+
+```bash
+# Check all container status
+docker-compose ps
+
+# Check service health
+curl http://localhost:8080/health       # Backend health
+curl http://localhost:8080/api/v1/health # API health  
+curl http://localhost:3000              # Frontend access
+
+# View service logs
+docker-compose logs -f alertbot --tail=20   # Backend logs
+docker-compose logs -f frontend --tail=20   # Frontend logs
+docker-compose logs -f postgres --tail=20   # Database logs
+```
+
+**Expected Service Status:**
+- **Database**: `alertbot_postgres` - Port 5432 - Healthy ✅
+- **Backend**: `alertbot_server` - Port 8080 - Running ✅
+- **Frontend**: `alertbot_frontend` - Port 3000 - Running ✅
+
+**Expected Health Responses:**
+- Backend health: `{"service":"alertbot","status":"ok","version":"1.0.0"}` ✅
+- API health: `{"success":true,"data":{"status":"healthy",...}}` ✅
+- Frontend: AlertBot Web UI accessible at http://localhost:3000 ✅
+
+**🎉 All Services Successfully Running!**
+- Frontend UI: http://localhost:3000
+- Backend API: http://localhost:8080
+- Database: localhost:5432
 
 ### Development Scripts
 - `./start-dev.sh` - Automated development environment startup script

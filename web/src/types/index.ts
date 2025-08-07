@@ -27,10 +27,9 @@ export interface RoutingRule {
   name: string
   description: string
   conditions: Record<string, any>
-  receivers: Array<{
-    channel_id: number
-    template: string
-  }>
+  receivers: {
+    channels: number[]
+  }
   priority: number
   enabled: boolean
   created_at: string

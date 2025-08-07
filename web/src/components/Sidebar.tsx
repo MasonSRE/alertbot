@@ -7,6 +7,9 @@ import {
   SettingOutlined,
   BellOutlined,
   NotificationOutlined,
+  StopOutlined,
+  GroupOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons'
 
 const { Sider } = Layout
@@ -35,6 +38,21 @@ const Sidebar: React.FC = () => {
       key: '/channels',
       icon: <NotificationOutlined />,
       label: '通知渠道',
+    },
+    {
+      key: '/silences',
+      icon: <StopOutlined />,
+      label: '静默规则',
+    },
+    {
+      key: '/inhibitions',
+      icon: <ExclamationCircleOutlined />,
+      label: '抑制规则',
+    },
+    {
+      key: '/alert-groups',
+      icon: <GroupOutlined />,
+      label: '告警分组',
     },
     {
       key: '/settings',

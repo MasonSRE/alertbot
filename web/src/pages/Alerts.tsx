@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import { Card, Table, Tag, Button, Space, Select, Input, DatePicker, Modal, Form, message } from 'antd'
-import { SearchOutlined, ReloadOutlined, StopOutlined, CheckOutlined, DeleteOutlined } from '@ant-design/icons'
-import { useAlerts, useSilenceAlert, useAcknowledgeAlert, useResolveAlert } from '@/hooks/useAlerts'
+import { Card, Table, Tag, Button, Space, Select, Input, DatePicker, Modal, Form } from 'antd'
+import { SearchOutlined, ReloadOutlined, StopOutlined, CheckOutlined, DeleteOutlined, HistoryOutlined } from '@ant-design/icons'
+import { useAlerts, useSilenceAlert, useAcknowledgeAlert, useResolveAlert, useBatchSilenceAlerts, useBatchAcknowledgeAlerts, useBatchResolveAlerts } from '@/hooks/useAlerts'
+import { useAlertHistory } from '@/hooks/useAlertHistory'
 import type { ColumnsType } from 'antd/es/table'
 import type { Alert, AlertFilters } from '@/types'
 
@@ -12,14 +13,21 @@ const Alerts: React.FC = () => {
   const [filters, setFilters] = useState<AlertFilters>({ page: 1, size: 20 })
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const [silenceModalVisible, setSilenceModalVisible] = useState(false)
+  const [historyModalVisible, setHistoryModalVisible] = useState(false)
   const [currentAlert, setCurrentAlert] = useState<Alert | null>(null)
 
   const { data: alertsData, isLoading: loading, refetch } = useAlerts(filters)
   const silenceMutation = useSilenceAlert()
   const acknowledgeMutation = useAcknowledgeAlert()
   const resolveMutation = useResolveAlert()
+  const batchSilenceMutation = useBatchSilenceAlerts()
+  const batchAcknowledgeMutation = useBatchAcknowledgeAlerts()
+  const batchResolveMutation = useBatchResolveAlerts()
+  
+  // 历史查看相关
+  const { data: alertHistory, isLoading: historyLoading } = useAlertHistory(currentAlert?.fingerprint || '')
 
-  const alerts = alertsData?.items || []
+  const alerts = Array.isArray(alertsData?.items) ? alertsData.items : []
   const total = alertsData?.total || 0
   const page = alertsData?.page || 1
   const size = alertsData?.size || 20
@@ -117,6 +125,13 @@ const Alerts: React.FC = () => {
         <Space size="small">
           <Button
             size="small"
+            icon={<HistoryOutlined />}
+            onClick={() => handleViewHistory(record)}
+          >
+            历史
+          </Button>
+          <Button
+            size="small"
             icon={<StopOutlined />}
             onClick={() => handleSilence(record)}
           >
@@ -141,6 +156,11 @@ const Alerts: React.FC = () => {
       ),
     },
   ]
+
+  const handleViewHistory = (alert: Alert) => {
+    setCurrentAlert(alert)
+    setHistoryModalVisible(true)
+  }
 
   const handleSilence = (alert: Alert) => {
     setCurrentAlert(alert)
@@ -180,6 +200,104 @@ const Alerts: React.FC = () => {
     }
   }
 
+  // 批量操作处理函数
+  const getSelectedFingerprints = () => {
+    return selectedRowKeys.map(key => {
+      const alert = alerts.find(alert => alert.id?.toString() === key.toString())
+      return alert?.fingerprint
+    }).filter(Boolean) as string[]
+  }
+
+  const handleBatchSilence = () => {
+    const fingerprints = getSelectedFingerprints()
+    if (fingerprints.length === 0) {
+      Modal.warning({ title: '提示', content: '请选择要静默的告警' })
+      return
+    }
+
+    Modal.confirm({
+      title: '批量静默告警',
+      content: `确定要静默 ${fingerprints.length} 个告警吗？`,
+      onOk() {
+        Modal.confirm({
+          title: '选择静默时长',
+          content: (
+            <Form
+              onFinish={(values) => {
+                batchSilenceMutation.mutate({
+                  fingerprints,
+                  duration: values.duration || '1h',
+                  comment: values.comment || '批量静默操作'
+                })
+                setSelectedRowKeys([])
+              }}
+              layout="vertical"
+            >
+              <Form.Item name="duration" label="静默时长" initialValue="1h">
+                <Select>
+                  <Option value="1h">1小时</Option>
+                  <Option value="4h">4小时</Option>
+                  <Option value="24h">24小时</Option>
+                  <Option value="7d">7天</Option>
+                </Select>
+              </Form.Item>
+              <Form.Item name="comment" label="备注">
+                <Input.TextArea rows={2} placeholder="批量静默原因" />
+              </Form.Item>
+              <Form.Item>
+                <Button type="primary" htmlType="submit">确认静默</Button>
+              </Form.Item>
+            </Form>
+          ),
+          width: 500,
+          footer: null
+        })
+      },
+    })
+  }
+
+  const handleBatchAcknowledge = () => {
+    const fingerprints = getSelectedFingerprints()
+    if (fingerprints.length === 0) {
+      Modal.warning({ title: '提示', content: '请选择要确认的告警' })
+      return
+    }
+
+    Modal.confirm({
+      title: '批量确认告警',
+      content: `确定要确认 ${fingerprints.length} 个告警吗？`,
+      onOk() {
+        batchAcknowledgeMutation.mutate({
+          fingerprints,
+          comment: '批量确认操作'
+        })
+        setSelectedRowKeys([])
+      },
+    })
+  }
+
+  const handleBatchResolve = () => {
+    const fingerprints = getSelectedFingerprints()
+    if (fingerprints.length === 0) {
+      Modal.warning({ title: '提示', content: '请选择要解决的告警' })
+      return
+    }
+
+    Modal.confirm({
+      title: '批量解决告警',
+      content: `确定要解决 ${fingerprints.length} 个告警吗？这将标记这些告警为已解决状态。`,
+      okText: '确认解决',
+      okType: 'danger',
+      onOk() {
+        batchResolveMutation.mutate({
+          fingerprints,
+          comment: '批量解决操作'
+        })
+        setSelectedRowKeys([])
+      },
+    })
+  }
+
   const rowSelection = {
     selectedRowKeys,
     onChange: (selectedRowKeys: React.Key[]) => {
@@ -196,14 +314,26 @@ const Alerts: React.FC = () => {
               placeholder="搜索告警名称"
               prefix={<SearchOutlined />}
               style={{ width: 200 }}
+              value={filters.alertname || ''}
+              onChange={(e) => setFilters({ ...filters, alertname: e.target.value, page: 1 })}
             />
-            <Select placeholder="状态" style={{ width: 120 }}>
+            <Select 
+              placeholder="状态" 
+              style={{ width: 120 }}
+              value={filters.status || ''}
+              onChange={(value) => setFilters({ ...filters, status: value, page: 1 })}
+            >
               <Option value="">全部</Option>
               <Option value="firing">告警中</Option>
               <Option value="resolved">已解决</Option>
               <Option value="silenced">已静默</Option>
             </Select>
-            <Select placeholder="严重程度" style={{ width: 120 }}>
+            <Select 
+              placeholder="严重程度" 
+              style={{ width: 120 }}
+              value={filters.severity || ''}
+              onChange={(value) => setFilters({ ...filters, severity: value, page: 1 })}
+            >
               <Option value="">全部</Option>
               <Option value="critical">严重</Option>
               <Option value="warning">警告</Option>
@@ -223,9 +353,31 @@ const Alerts: React.FC = () => {
           <div style={{ marginBottom: 16 }}>
             <Space>
               <span>已选择 {selectedRowKeys.length} 项</span>
-              <Button size="small">批量静默</Button>
-              <Button size="small">批量确认</Button>
-              <Button size="small" danger>批量解决</Button>
+              <Button 
+                size="small" 
+                icon={<StopOutlined />}
+                onClick={handleBatchSilence}
+                loading={batchSilenceMutation.isPending}
+              >
+                批量静默
+              </Button>
+              <Button 
+                size="small" 
+                icon={<CheckOutlined />}
+                onClick={handleBatchAcknowledge}
+                loading={batchAcknowledgeMutation.isPending}
+              >
+                批量确认
+              </Button>
+              <Button 
+                size="small" 
+                icon={<DeleteOutlined />}
+                danger
+                onClick={handleBatchResolve}
+                loading={batchResolveMutation.isPending}
+              >
+                批量解决
+              </Button>
             </Space>
           </div>
         )}
@@ -283,6 +435,76 @@ const Alerts: React.FC = () => {
             </Space>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 告警历史查看Modal */}
+      <Modal
+        title={`告警历史 - ${currentAlert?.labels?.alertname || '未知告警'}`}
+        open={historyModalVisible}
+        onCancel={() => setHistoryModalVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setHistoryModalVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={800}
+      >
+        {historyLoading ? (
+          <div style={{ textAlign: 'center', padding: '20px' }}>
+            加载中...
+          </div>
+        ) : (
+          <Table
+            dataSource={alertHistory || []}
+            size="small"
+            rowKey="id"
+            pagination={false}
+            columns={[
+              {
+                title: '操作',
+                dataIndex: 'action',
+                key: 'action',
+                width: 100,
+                render: (action: string) => {
+                  const actionMap: { [key: string]: { text: string; color: string } } = {
+                    'created': { text: '创建', color: 'blue' },
+                    'updated': { text: '更新', color: 'orange' },
+                    'silenced': { text: '静默', color: 'purple' },
+                    'acknowledged': { text: '确认', color: 'green' },
+                    'resolved': { text: '解决', color: 'gray' },
+                  }
+                  const actionInfo = actionMap[action] || { text: action, color: 'default' }
+                  return <Tag color={actionInfo.color}>{actionInfo.text}</Tag>
+                },
+              },
+              {
+                title: '详情',
+                dataIndex: 'details',
+                key: 'details',
+                render: (details: any) => {
+                  if (!details || typeof details !== 'object') return '--'
+                  return (
+                    <div>
+                      {Object.entries(details).map(([key, value]) => (
+                        <div key={key} style={{ fontSize: '12px' }}>
+                          <strong>{key}:</strong> {String(value)}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                },
+              },
+              {
+                title: '时间',
+                dataIndex: 'created_at',
+                key: 'created_at',
+                width: 180,
+                render: (time: string) => new Date(time).toLocaleString(),
+              },
+            ]}
+            locale={{ emptyText: '暂无历史记录' }}
+          />
+        )}
       </Modal>
     </div>
   )

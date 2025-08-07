@@ -2,7 +2,7 @@ import axios, { AxiosResponse } from 'axios'
 import type { Alert, AlertFilters, RoutingRule, NotificationChannel, Silence, ApiResponse, PaginatedResponse, Stats } from '@/types'
 
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: 'http://localhost:8080/api/v1',  // Direct to backend
   timeout: 10000,
 })
 
@@ -57,12 +57,32 @@ export const alertApi = {
   
   send: (alerts: any[]) =>
     api.post<ApiResponse<any>>('/alerts', alerts),
+  
+  // 批量操作API
+  batchSilence: (data: { fingerprints: string[]; duration: string; comment?: string }) =>
+    api.put<ApiResponse<{ processed: number; action: string }>>('/alerts/batch/silence', data),
+  
+  batchAcknowledge: (data: { fingerprints: string[]; comment?: string }) =>
+    api.put<ApiResponse<{ processed: number; action: string }>>('/alerts/batch/ack', data),
+  
+  batchResolve: (data: { fingerprints: string[]; comment?: string }) =>
+    api.delete<ApiResponse<{ processed: number; action: string }>>('/alerts/batch/resolve', { data }),
+  
+  // 告警历史API
+  getHistory: (fingerprint: string) =>
+    api.get<ApiResponse<any[]>>(`/alerts/${fingerprint}/history`),
+}
+
+export const alertHistoryApi = {
+  // 告警历史相关API
+  list: (filters: any) =>
+    api.get<ApiResponse<PaginatedResponse<any>>>('/alert-history', { params: filters }),
 }
 
 export const ruleApi = {
   // 规则相关API
   list: () =>
-    api.get<ApiResponse<RoutingRule[]>>('/rules'),
+    api.get<ApiResponse<PaginatedResponse<RoutingRule>>>('/rules'),
   
   get: (id: number) =>
     api.get<ApiResponse<RoutingRule>>(`/rules/${id}`),
@@ -83,7 +103,7 @@ export const ruleApi = {
 export const channelApi = {
   // 通知渠道相关API
   list: () =>
-    api.get<ApiResponse<NotificationChannel[]>>('/channels'),
+    api.get<ApiResponse<PaginatedResponse<NotificationChannel>>>('/channels'),
   
   get: (id: number) =>
     api.get<ApiResponse<NotificationChannel>>(`/channels/${id}`),
@@ -114,6 +134,37 @@ export const silenceApi = {
   
   delete: (id: number) =>
     api.delete<ApiResponse<any>>(`/silences/${id}`),
+    
+  test: (data: { matchers: any[]; labels: Record<string, string> }) =>
+    api.post<ApiResponse<{ matched: boolean }>>('/silences/test', data),
+}
+
+export const alertGroupApi = {
+  // 告警分组API
+  listGroups: (filters?: any) =>
+    api.get<ApiResponse<any>>('/alert-groups', { params: filters }),
+  
+  getGroup: (id: number) =>
+    api.get<ApiResponse<any>>(`/alert-groups/${id}`),
+  
+  // 告警分组规则API
+  listRules: () =>
+    api.get<ApiResponse<any>>('/alert-group-rules'),
+  
+  getRule: (id: number) =>
+    api.get<ApiResponse<any>>(`/alert-group-rules/${id}`),
+  
+  createRule: (data: any) =>
+    api.post<ApiResponse<any>>('/alert-group-rules', data),
+  
+  updateRule: (id: number, data: any) =>
+    api.put<ApiResponse<any>>(`/alert-group-rules/${id}`, data),
+  
+  deleteRule: (id: number) =>
+    api.delete<ApiResponse<any>>(`/alert-group-rules/${id}`),
+  
+  testRule: (data: any) =>
+    api.post<ApiResponse<any>>('/alert-group-rules/test', data),
 }
 
 export const statsApi = {
@@ -135,6 +186,53 @@ export const authApi = {
   
   refresh: () =>
     api.post<ApiResponse<{ token: string }>>('/auth/refresh'),
+}
+
+export const inhibitionApi = {
+  // 抑制规则相关API
+  list: () =>
+    api.get<ApiResponse<any[]>>('/inhibitions'),
+  
+  get: (id: number) =>
+    api.get<ApiResponse<any>>(`/inhibitions/${id}`),
+  
+  create: (rule: any) =>
+    api.post<ApiResponse<any>>('/inhibitions', rule),
+  
+  update: (id: number, rule: any) =>
+    api.put<ApiResponse<any>>(`/inhibitions/${id}`, rule),
+  
+  delete: (id: number) =>
+    api.delete<ApiResponse<any>>(`/inhibitions/${id}`),
+  
+  test: (data: { rule: any; source_alert: any; target_alert: any }) =>
+    api.post<ApiResponse<{ inhibited: boolean; test_rule: string }>>('/inhibitions/test', data),
+}
+
+export const settingsApi = {
+  // 系统设置API
+  getSystemSettings: () =>
+    api.get<ApiResponse<any>>('/settings/system'),
+  
+  updateSystemSettings: (data: any) =>
+    api.put<ApiResponse<any>>('/settings/system', data),
+  
+  // Prometheus设置API
+  getPrometheusSettings: () =>
+    api.get<ApiResponse<any>>('/settings/prometheus'),
+  
+  updatePrometheusSettings: (data: any) =>
+    api.put<ApiResponse<any>>('/settings/prometheus', data),
+  
+  testPrometheusConnection: (data: { url: string; timeout: number }) =>
+    api.post<ApiResponse<any>>('/settings/prometheus/test', data),
+  
+  // 通知设置API
+  getNotificationSettings: () =>
+    api.get<ApiResponse<any>>('/settings/notification'),
+  
+  updateNotificationSettings: (data: any) =>
+    api.put<ApiResponse<any>>('/settings/notification', data),
 }
 
 export default api

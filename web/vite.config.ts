@@ -10,10 +10,25 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',  // Allow access from outside container
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: process.env.NODE_ENV === 'production' 
+          ? 'http://alertbot:8080'  // Docker container name
+          : 'http://localhost:8080', // Local development
+        changeOrigin: true,
+      },
+      '/health': {
+        target: process.env.NODE_ENV === 'production' 
+          ? 'http://alertbot:8080'  // Docker container name
+          : 'http://localhost:8080', // Local development
+        changeOrigin: true,
+      },
+      '/metrics': {
+        target: process.env.NODE_ENV === 'production' 
+          ? 'http://alertbot:8080'  // Docker container name
+          : 'http://localhost:8080', // Local development
         changeOrigin: true,
       },
     },

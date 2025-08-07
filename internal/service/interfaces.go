@@ -12,6 +12,11 @@ type AlertService interface {
 	SilenceAlert(ctx context.Context, fingerprint string, duration string, comment string) error
 	AcknowledgeAlert(ctx context.Context, fingerprint string, comment string) error
 	ResolveAlert(ctx context.Context, fingerprint string, comment string) error
+	BatchSilenceAlerts(ctx context.Context, fingerprints []string, duration string, comment string) error
+	BatchAcknowledgeAlerts(ctx context.Context, fingerprints []string, comment string) error
+	BatchResolveAlerts(ctx context.Context, fingerprints []string, comment string) error
+	GetAlertHistory(ctx context.Context, fingerprint string) ([]models.AlertHistory, error)
+	ListAlertHistory(ctx context.Context, filters models.AlertHistoryFilters) ([]models.AlertHistory, int64, error)
 }
 
 type RoutingRuleService interface {

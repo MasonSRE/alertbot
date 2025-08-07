@@ -301,3 +301,107 @@ func (s *alertService) sendRuleNotifications(ctx context.Context, alert *models.
 	
 	// Notification implementation temporarily disabled
 }
+
+// BatchSilenceAlerts silences multiple alerts at once
+func (s *alertService) BatchSilenceAlerts(ctx context.Context, fingerprints []string, duration string, comment string) error {
+	if len(fingerprints) == 0 {
+		return fmt.Errorf("no fingerprints provided")
+	}
+
+	successCount := 0
+	var lastError error
+
+	for _, fingerprint := range fingerprints {
+		err := s.SilenceAlert(ctx, fingerprint, duration, comment)
+		if err != nil {
+			s.deps.Logger.WithError(err).WithField("fingerprint", fingerprint).Error("Failed to silence alert in batch operation")
+			lastError = err
+		} else {
+			successCount++
+		}
+	}
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to silence any alerts: %v", lastError)
+	}
+
+	if lastError != nil {
+		s.deps.Logger.Warnf("Batch silence completed with errors: %d/%d succeeded", successCount, len(fingerprints))
+	}
+
+	return nil
+}
+
+// BatchAcknowledgeAlerts acknowledges multiple alerts at once
+func (s *alertService) BatchAcknowledgeAlerts(ctx context.Context, fingerprints []string, comment string) error {
+	if len(fingerprints) == 0 {
+		return fmt.Errorf("no fingerprints provided")
+	}
+
+	successCount := 0
+	var lastError error
+
+	for _, fingerprint := range fingerprints {
+		err := s.AcknowledgeAlert(ctx, fingerprint, comment)
+		if err != nil {
+			s.deps.Logger.WithError(err).WithField("fingerprint", fingerprint).Error("Failed to acknowledge alert in batch operation")
+			lastError = err
+		} else {
+			successCount++
+		}
+	}
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to acknowledge any alerts: %v", lastError)
+	}
+
+	if lastError != nil {
+		s.deps.Logger.Warnf("Batch acknowledge completed with errors: %d/%d succeeded", successCount, len(fingerprints))
+	}
+
+	return nil
+}
+
+// BatchResolveAlerts resolves multiple alerts at once
+func (s *alertService) BatchResolveAlerts(ctx context.Context, fingerprints []string, comment string) error {
+	if len(fingerprints) == 0 {
+		return fmt.Errorf("no fingerprints provided")
+	}
+
+	successCount := 0
+	var lastError error
+
+	for _, fingerprint := range fingerprints {
+		err := s.ResolveAlert(ctx, fingerprint, comment)
+		if err != nil {
+			s.deps.Logger.WithError(err).WithField("fingerprint", fingerprint).Error("Failed to resolve alert in batch operation")
+			lastError = err
+		} else {
+			successCount++
+		}
+	}
+
+	if successCount == 0 {
+		return fmt.Errorf("failed to resolve any alerts: %v", lastError)
+	}
+
+	if lastError != nil {
+		s.deps.Logger.Warnf("Batch resolve completed with errors: %d/%d succeeded", successCount, len(fingerprints))
+	}
+
+	return nil
+}
+
+// GetAlertHistory returns the history for a specific alert by fingerprint
+func (s *alertService) GetAlertHistory(ctx context.Context, fingerprint string) ([]models.AlertHistory, error) {
+	if fingerprint == "" {
+		return nil, fmt.Errorf("fingerprint is required")
+	}
+
+	return s.deps.Repositories.AlertHistory.GetByFingerprint(fingerprint)
+}
+
+// ListAlertHistory returns paginated alert history with optional filters
+func (s *alertService) ListAlertHistory(ctx context.Context, filters models.AlertHistoryFilters) ([]models.AlertHistory, int64, error) {
+	return s.deps.Repositories.AlertHistory.List(filters)
+}

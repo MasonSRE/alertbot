@@ -1,42 +1,40 @@
 import React from 'react'
-import { Card, Row, Col, Statistic, Progress, Table, Tag } from 'antd'
+import { Card, Row, Col, Statistic, Progress, Table, Tag, Spin } from 'antd'
 import { AlertOutlined, CheckCircleOutlined, ExclamationCircleOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { useDashboardStats } from '@/hooks/useDashboard'
+import { useAlerts } from '@/hooks/useAlerts'
 
 const Dashboard: React.FC = () => {
-  // 模拟数据
+  const { data: statsData, isLoading: statsLoading } = useDashboardStats()
+  const { data: alertsData, isLoading: alertsLoading } = useAlerts({ page: 1, size: 10, sort: 'created_at', order: 'desc' })
+
+  // 从API数据中提取统计信息
   const stats = {
-    total: 156,
-    firing: 45,
-    resolved: 111,
-    silenced: 12,
+    total: statsData?.total_alerts || 0,
+    firing: statsData?.firing_alerts || 0,
+    resolved: statsData?.resolved_alerts || 0,
+    silenced: 0, // 静默数据可能需要单独接口
   }
 
-  const recentAlerts = [
-    {
-      key: '1',
-      alertname: 'HighCPUUsage',
-      instance: 'server1:9100',
-      severity: 'critical',
-      status: 'firing',
-      time: '2分钟前',
-    },
-    {
-      key: '2',
-      alertname: 'DiskSpaceLow',
-      instance: 'server2:9100',
-      severity: 'warning',
-      status: 'firing',
-      time: '5分钟前',
-    },
-    {
-      key: '3',
-      alertname: 'ServiceDown',
-      instance: 'api-server:8080',
-      severity: 'critical',
-      status: 'resolved',
-      time: '10分钟前',
-    },
-  ]
+  // 使用真实告警数据
+  const recentAlerts = Array.isArray(alertsData?.items) 
+    ? alertsData.items.map((alert: any, index: number) => ({
+        key: alert.id?.toString() || index.toString(),
+        alertname: alert.labels?.alertname || '未知告警',
+        instance: alert.labels?.instance || '未知实例',
+        severity: alert.severity || 'info',
+        status: alert.status || 'unknown',
+        time: alert.created_at ? new Date(alert.created_at).toLocaleString() : '未知时间',
+      }))
+    : []
+
+  if (statsLoading || alertsLoading) {
+    return (
+      <div style={{ textAlign: 'center', padding: '50px' }}>
+        <Spin size="large" />
+      </div>
+    )
+  }
 
   const columns = [
     {
@@ -129,6 +127,7 @@ const Dashboard: React.FC = () => {
               columns={columns}
               pagination={false}
               size="small"
+              locale={{ emptyText: '暂无告警数据' }}
             />
           </Card>
         </Col>
