@@ -1,0 +1,31 @@
+# Prometheus配置示例
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# AlertBot作为Alertmanager的替代品
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - 'host.docker.internal:8080'  # Docker内部访问宿主机的8080端口
+          # 如果Prometheus在宿主机上运行，使用: localhost:8080
+          # 如果Prometheus在Docker中运行，使用: host.docker.internal:8080
+          # 如果Prometheus在远程服务器，使用实际IP: 192.168.2.206:8080
+
+# 规则文件配置（必须有规则才能产生告警）
+rule_files:
+  - "alert_rules.yml"
+
+# 监控目标
+scrape_configs:
+  # 监控Prometheus自身
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 示例：监控Node Exporter
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+EOF < /dev/null

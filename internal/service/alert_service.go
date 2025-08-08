@@ -278,6 +278,26 @@ func (s *alertService) processAlertRouting(ctx context.Context, alert *models.Al
 		return
 	}
 	
+	// Check if alert is silenced before routing
+	isSilenced, silenceID := s.isAlertSilenced(ctx, alert)
+	if isSilenced {
+		s.deps.Logger.WithFields(logrus.Fields{
+			"alert_fingerprint": alert.Fingerprint,
+			"silence_id": silenceID,
+		}).Info("Alert is silenced, skipping notification")
+		return
+	}
+	
+	// Check if alert is inhibited before routing
+	isInhibited, inhibitionID := s.isAlertInhibited(ctx, alert)
+	if isInhibited {
+		s.deps.Logger.WithFields(logrus.Fields{
+			"alert_fingerprint": alert.Fingerprint,
+			"inhibition_id": inhibitionID,
+		}).Info("Alert is inhibited, skipping notification")
+		return
+	}
+	
 	// Find matching rules
 	matchedRules, err := s.deps.RuleEngine.MatchAlert(ctx, alert)
 	if err != nil {
@@ -310,19 +330,84 @@ func (s *alertService) sendRuleNotifications(ctx context.Context, alert *models.
 		return
 	}
 
-	// Parse receivers from rule
-	// Skip receivers processing for now
+	// Parse receivers from rule - JSONB is already a map[string]interface{}
 	if rule.Receivers == nil {
 		s.deps.Logger.WithField("rule_id", rule.ID).Error("Invalid receivers format in routing rule")
 		return
 	}
 
-	// Skip notification processing for now
-	_ = rule.Receivers
-	s.deps.Logger.WithField("rule_id", rule.ID).Debug("Notification processing not implemented yet")
-	return
+	// Get channels array from receivers
+	channelsInterface, exists := rule.Receivers["channels"]
+	if !exists {
+		s.deps.Logger.WithField("rule_id", rule.ID).Debug("No channels defined in rule receivers")
+		return
+	}
+
+	// Parse channel IDs
+	var channelIDs []uint
+	switch channels := channelsInterface.(type) {
+	case []interface{}:
+		for _, ch := range channels {
+			switch id := ch.(type) {
+			case float64:
+				channelIDs = append(channelIDs, uint(id))
+			case int:
+				channelIDs = append(channelIDs, uint(id))
+			case uint:
+				channelIDs = append(channelIDs, id)
+			}
+		}
+	}
+
+	if len(channelIDs) == 0 {
+		s.deps.Logger.WithField("rule_id", rule.ID).Debug("No valid channel IDs found in rule receivers")
+		return
+	}
+
+	// Send notifications to each channel
+	for _, channelID := range channelIDs {
+		// Get channel configuration
+		channel, err := s.deps.Repositories.NotificationChannel.GetByID(channelID)
+		if err != nil {
+			s.deps.Logger.WithError(err).WithField("channel_id", channelID).Error("Failed to get notification channel")
+			continue
+		}
+
+		if !channel.Enabled {
+			s.deps.Logger.WithField("channel_id", channelID).Debug("Channel is disabled, skipping notification")
+			continue
+		}
+
+		// Convert channel type to NotificationChannelType
+		channelType := models.NotificationChannelType(channel.Type)
+
+		// Send notification through the notification manager
+		start := time.Now()
+		err = s.deps.NotificationManager.SendAlertNotification(ctx, alert, channel.Config, channelType)
+		duration := time.Since(start).Seconds()
+		
+		if err != nil {
+			s.deps.Logger.WithError(err).WithFields(logrus.Fields{
+				"alert_fingerprint": alert.Fingerprint,
+				"channel_id":        channelID,
+				"channel_type":      channel.Type,
+			}).Error("Failed to send notification")
+			
+			// Record notification failure metric
+			metrics.RecordNotificationSent(channel.Type, "failed", duration)
+		} else {
+			s.deps.Logger.WithFields(logrus.Fields{
+				"alert_fingerprint": alert.Fingerprint,
+				"channel_id":        channelID,
+				"channel_type":      channel.Type,
+			}).Info("Notification sent successfully")
+			
+			// Record notification success metric
+			metrics.RecordNotificationSent(channel.Type, "success", duration)
+		}
+	}
 	
-	// Notification implementation temporarily disabled
+	// Notification implementation enabled
 }
 
 // BatchSilenceAlerts silences multiple alerts at once
@@ -489,6 +574,296 @@ func (s *alertService) handleDuplicateAlert(ctx context.Context, alert *models.A
 	if action != "ignore" && s.deps.WebSocketHub != nil {
 		s.deps.WebSocketHub.BroadcastAlertUpdate(existingAlert, "deduplicated")
 	}
+}
+
+// isAlertSilenced checks if an alert matches any active silence rules
+func (s *alertService) isAlertSilenced(ctx context.Context, alert *models.Alert) (bool, uint) {
+	// Get all active silences
+	silences, err := s.deps.Repositories.Silence.List()
+	if err != nil {
+		s.deps.Logger.WithError(err).Error("Failed to get silences")
+		return false, 0
+	}
+	
+	now := time.Now()
+	
+	for _, silence := range silences {
+		// Check if silence is currently active
+		if now.Before(silence.StartsAt) || now.After(silence.EndsAt) {
+			continue
+		}
+		
+		// Check if alert matches silence matchers
+		if s.alertMatchesSilence(alert, silence) {
+			return true, silence.ID
+		}
+	}
+	
+	return false, 0
+}
+
+// alertMatchesSilence checks if an alert matches a silence rule
+func (s *alertService) alertMatchesSilence(alert *models.Alert, silence models.Silence) bool {
+	// Parse matchers from silence
+	matchersData, ok := silence.Matchers["matchers"]
+	if !ok {
+		return false
+	}
+	
+	matchers, ok := matchersData.([]interface{})
+	if !ok {
+		return false
+	}
+	
+	// All matchers must match for the silence to apply
+	for _, matcherInterface := range matchers {
+		matcher, ok := matcherInterface.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		
+		name, nameOk := matcher["name"].(string)
+		value, valueOk := matcher["value"].(string)
+		isRegex, _ := matcher["is_regex"].(bool)
+		
+		if !nameOk || !valueOk {
+			continue
+		}
+		
+		// Get the label value from the alert
+		alertLabelInterface, exists := alert.Labels[name]
+		if !exists {
+			return false // If the label doesn't exist, the matcher doesn't match
+		}
+		
+		// Convert interface{} to string
+		alertLabelValue, ok := alertLabelInterface.(string)
+		if !ok {
+			// Try to convert to string using fmt.Sprint
+			alertLabelValue = fmt.Sprint(alertLabelInterface)
+		}
+		
+		// Check if the value matches
+		if isRegex {
+			// TODO: Implement regex matching
+			// For now, we'll do a simple contains check
+			if !strings.Contains(alertLabelValue, value) {
+				return false
+			}
+		} else {
+			// Exact match
+			if alertLabelValue != value {
+				return false
+			}
+		}
+	}
+	
+	// All matchers matched
+	return true
+}
+
+// isAlertInhibited checks if an alert matches any active inhibition rules
+func (s *alertService) isAlertInhibited(ctx context.Context, alert *models.Alert) (bool, uint) {
+	// Get all active inhibition rules
+	inhibitions, err := s.deps.Repositories.Inhibition.List()
+	if err != nil {
+		s.deps.Logger.WithError(err).Error("Failed to get inhibitions")
+		return false, 0
+	}
+	
+	for _, inhibition := range inhibitions {
+		if !inhibition.Enabled {
+			continue
+		}
+		
+		// Check if this alert matches the target matchers
+		if !s.alertMatchesInhibitionTarget(alert, inhibition) {
+			continue
+		}
+		
+		// Now check if there are any active source alerts that match
+		sourceAlerts, err := s.findInhibitionSourceAlerts(ctx, inhibition, alert)
+		if err != nil {
+			s.deps.Logger.WithError(err).Error("Failed to find source alerts for inhibition")
+			continue
+		}
+		
+		if len(sourceAlerts) > 0 {
+			// Found source alerts that inhibit this alert
+			return true, inhibition.ID
+		}
+	}
+	
+	return false, 0
+}
+
+// alertMatchesInhibitionTarget checks if an alert matches inhibition target matchers
+func (s *alertService) alertMatchesInhibitionTarget(alert *models.Alert, inhibition models.InhibitionRule) bool {
+	// Parse target matchers
+	targetMatchers, ok := inhibition.TargetMatchers["matchers"]
+	if !ok {
+		return false
+	}
+	
+	matchers, ok := targetMatchers.([]interface{})
+	if !ok {
+		return false
+	}
+	
+	// All matchers must match
+	for _, matcherInterface := range matchers {
+		matcher, ok := matcherInterface.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		
+		name, _ := matcher["name"].(string)
+		value, _ := matcher["value"].(string)
+		isRegex, _ := matcher["is_regex"].(bool)
+		
+		alertLabelInterface, exists := alert.Labels[name]
+		if !exists {
+			return false
+		}
+		
+		alertLabelValue, ok := alertLabelInterface.(string)
+		if !ok {
+			alertLabelValue = fmt.Sprint(alertLabelInterface)
+		}
+		
+		if isRegex {
+			if !strings.Contains(alertLabelValue, value) {
+				return false
+			}
+		} else {
+			if alertLabelValue != value {
+				return false
+			}
+		}
+	}
+	
+	return true
+}
+
+// findInhibitionSourceAlerts finds active source alerts for an inhibition rule
+func (s *alertService) findInhibitionSourceAlerts(ctx context.Context, inhibition models.InhibitionRule, targetAlert *models.Alert) ([]models.Alert, error) {
+	// Get all firing alerts
+	filters := models.AlertFilters{
+		Status: "firing",
+	}
+	alerts, _, err := s.deps.Repositories.Alert.List(filters)
+	if err != nil {
+		return nil, err
+	}
+	
+	var sourceAlerts []models.Alert
+	
+	// Parse source matchers
+	sourceMatchers, ok := inhibition.SourceMatchers["matchers"]
+	if !ok {
+		return sourceAlerts, nil
+	}
+	
+	matchers, ok := sourceMatchers.([]interface{})
+	if !ok {
+		return sourceAlerts, nil
+	}
+	
+	// Check each alert to see if it matches source matchers
+	for _, alert := range alerts {
+		if alert.ID == targetAlert.ID {
+			continue // Skip the target alert itself
+		}
+		
+		// Check if alert matches all source matchers
+		matchesAll := true
+		for _, matcherInterface := range matchers {
+			matcher, ok := matcherInterface.(map[string]interface{})
+			if !ok {
+				matchesAll = false
+				break
+			}
+			
+			name, _ := matcher["name"].(string)
+			value, _ := matcher["value"].(string)
+			isRegex, _ := matcher["is_regex"].(bool)
+			
+			alertLabelInterface, exists := alert.Labels[name]
+			if !exists {
+				matchesAll = false
+				break
+			}
+			
+			alertLabelValue, ok := alertLabelInterface.(string)
+			if !ok {
+				alertLabelValue = fmt.Sprint(alertLabelInterface)
+			}
+			
+			if isRegex {
+				if !strings.Contains(alertLabelValue, value) {
+					matchesAll = false
+					break
+				}
+			} else {
+				if alertLabelValue != value {
+					matchesAll = false
+					break
+				}
+			}
+		}
+		
+		if !matchesAll {
+			continue
+		}
+		
+		// Check if equal_labels match (if specified)
+		if inhibition.EqualLabels != nil && len(inhibition.EqualLabels) > 0 {
+			// EqualLabels is a JSONB which is map[string]interface{}
+			// It should contain an array of label names
+			equalLabelsInterface, hasEqual := inhibition.EqualLabels["equal"]
+			if !hasEqual {
+				// Try direct array format
+				equalLabelsInterface = inhibition.EqualLabels["labels"]
+			}
+			
+			equalLabels, ok := equalLabelsInterface.([]interface{})
+			if ok && len(equalLabels) > 0 {
+				allEqual := true
+				for _, labelInterface := range equalLabels {
+					label, ok := labelInterface.(string)
+					if !ok {
+						continue
+					}
+					
+					sourceValue, sourceExists := alert.Labels[label]
+					targetValue, targetExists := targetAlert.Labels[label]
+					
+					if !sourceExists || !targetExists {
+						allEqual = false
+						break
+					}
+					
+					// Convert to string for comparison
+					sourceStr := fmt.Sprint(sourceValue)
+					targetStr := fmt.Sprint(targetValue)
+					
+					if sourceStr != targetStr {
+						allEqual = false
+						break
+					}
+				}
+				
+				if !allEqual {
+					continue
+				}
+			}
+		}
+		
+		// This alert matches all criteria
+		sourceAlerts = append(sourceAlerts, alert)
+	}
+	
+	return sourceAlerts, nil
 }
 
 // storeDeduplicationMetadata stores deduplication information in alert history

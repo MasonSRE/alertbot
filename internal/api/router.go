@@ -34,6 +34,23 @@ func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket
 
 	// Prometheus metrics endpoint
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	
+	// Alertmanager compatibility endpoints (for direct Prometheus integration)
+	router.GET("/api/v1/status", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"cluster": gin.H{
+				"status": "ready",
+				"name":   "alertbot",
+			},
+			"versionInfo": gin.H{
+				"version":   "1.0.0",
+				"revision":  "alertbot",
+				"branch":    "main",
+				"goVersion": "go1.21",
+			},
+			"uptime": "0h",
+		})
+	})
 
 	// API v1路由组
 	v1 := router.Group("/api/v1")
@@ -196,6 +213,23 @@ func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket
 		// WebSocket路由
 		wsHandler := NewWebSocketHandler(services, logger, hub)
 		v1.GET("/ws/alerts", middleware.OptionalJWTAuth(cfg), wsHandler.HandleWebSocket)
+	}
+
+	// Prometheus v2 API兼容路由
+	// Prometheus 2.x默认使用/api/v2/alerts路径发送告警
+	v2 := router.Group("/api/v2")
+	{
+		alertHandler := NewAlertHandler(services)
+		// 将Prometheus v2的告警转发到v1处理器
+		v2.POST("/alerts", alertHandler.ReceiveAlerts)
+	}
+
+	// 同时支持Prometheus配置了path_prefix的情况
+	// 处理错误的双重路径问题 /api/v1/api/v2/alerts
+	v1compat := router.Group("/api/v1/api/v2")
+	{
+		alertHandler := NewAlertHandler(services)
+		v1compat.POST("/alerts", alertHandler.ReceiveAlerts)
 	}
 
 	return router

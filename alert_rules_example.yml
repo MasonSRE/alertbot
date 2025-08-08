@@ -1,0 +1,60 @@
+# 告警规则示例
+groups:
+  - name: example_alerts
+    interval: 30s
+    rules:
+      # 示例1：CPU使用率告警
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "高CPU使用率 (instance {{ $labels.instance }})"
+          description: "CPU使用率超过80% (当前值: {{ $value }}%)"
+
+      # 示例2：内存使用率告警
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "高内存使用率 (instance {{ $labels.instance }})"
+          description: "内存使用率超过80% (当前值: {{ $value }}%)"
+
+      # 示例3：服务宕机告警
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "实例宕机 (instance {{ $labels.instance }})"
+          description: "{{ $labels.instance }} of job {{ $labels.job }} 已经宕机超过1分钟"
+
+      # 示例4：磁盘使用率告警
+      - alert: HighDiskUsage
+        expr: (1 - (node_filesystem_avail_bytes{fstype\!~"tmpfs|fuse.lxcfs|squashfs|vfat"} / node_filesystem_size_bytes)) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "磁盘使用率过高 (instance {{ $labels.instance }})"
+          description: "磁盘 {{ $labels.device }} 使用率超过80% (当前值: {{ $value }}%)"
+
+      # 测试告警（立即触发）
+      - alert: TestAlert
+        expr: vector(1) > 0
+        for: 0m
+        labels:
+          severity: info
+          team: test
+        annotations:
+          summary: "测试告警"
+          description: "这是一个测试告警，用于验证AlertBot是否正常接收告警"
+EOF < /dev/null
