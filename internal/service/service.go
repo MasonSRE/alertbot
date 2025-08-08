@@ -18,6 +18,7 @@ type Services struct {
 	Stats            StatsService
 	AlertGroup       AlertGroupService
 	Inhibition       InhibitionService
+	Settings         SettingsService
 }
 
 type ServiceDependencies struct {
@@ -25,6 +26,7 @@ type ServiceDependencies struct {
 	Logger              *logrus.Logger
 	Config              *config.Config
 	RuleEngine          *engine.RuleEngine
+	DeduplicationEngine *engine.DeduplicationEngine
 	NotificationManager *notification.NotificationManager
 	WebSocketHub        *websocket.Hub
 }
@@ -33,6 +35,11 @@ func NewServices(deps ServiceDependencies) *Services {
 	// Initialize rule engine if not provided
 	if deps.RuleEngine == nil {
 		deps.RuleEngine = engine.NewRuleEngine(deps.Repositories, deps.Logger)
+	}
+	
+	// Initialize deduplication engine if not provided
+	if deps.DeduplicationEngine == nil {
+		deps.DeduplicationEngine = engine.NewDeduplicationEngine(deps.Repositories, deps.Logger)
 	}
 	
 	// Initialize notification manager if not provided
@@ -48,5 +55,6 @@ func NewServices(deps ServiceDependencies) *Services {
 		Stats:               NewStatsService(deps), // Implemented in stats_service.go
 		AlertGroup:          NewAlertGroupService(deps.Repositories.AlertGroup, deps.Repositories.Alert, deps.Logger),
 		Inhibition:          NewInhibitionService(deps.Repositories.Inhibition, deps.Repositories.Alert, deps.Logger),
+		Settings:            NewSettingsService(deps.Repositories.Settings),
 	}
 }

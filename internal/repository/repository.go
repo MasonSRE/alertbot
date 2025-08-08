@@ -16,6 +16,7 @@ type Repositories struct {
 	AlertHistory        AlertHistoryRepository
 	AlertGroup          AlertGroupRepository
 	Inhibition          InhibitionRepository
+	Settings            SettingsRepository
 }
 
 type AlertRepository interface {
@@ -83,6 +84,20 @@ type InhibitionRepository interface {
 	GetActiveInhibitions(ctx context.Context) ([]*models.InhibitionStatus, error)
 }
 
+type SettingsRepository interface {
+	// System settings
+	GetSystemConfig() (*models.SystemConfig, error)
+	UpdateSystemConfig(config *models.SystemConfig) error
+	
+	// Prometheus settings
+	GetPrometheusConfig() (*models.PrometheusConfig, error)
+	UpdatePrometheusConfig(config *models.PrometheusConfig) error
+	
+	// Notification settings
+	GetNotificationConfig() (*models.NotificationConfig, error)
+	UpdateNotificationConfig(config *models.NotificationConfig) error
+}
+
 func NewRepositories(db *gorm.DB) *Repositories {
 	return &Repositories{
 		Alert:               NewAlertRepository(db),
@@ -92,5 +107,6 @@ func NewRepositories(db *gorm.DB) *Repositories {
 		AlertHistory:        NewAlertHistoryRepository(db),
 		AlertGroup:          NewAlertGroupRepository(db),
 		Inhibition:          NewInhibitionRepository(db),
+		Settings:            NewSettingsRepository(db),
 	}
 }

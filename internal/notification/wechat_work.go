@@ -68,14 +68,19 @@ func (w *WeChatWorkChannel) Send(ctx context.Context, message *NotificationMessa
 }
 
 func (w *WeChatWorkChannel) Test(ctx context.Context, testMessage string) error {
+	// WeChat Work Test method should not be called directly from API layer
+	// The old design expected testMessage to contain webhook URL, but API passes actual message
+	// This method should only be called with proper configuration
+	return fmt.Errorf("WeChat Work Test method requires configuration. Use service layer with proper channel config instead")
+}
+
+func (w *WeChatWorkChannel) TestWithConfig(ctx context.Context, testMessage string, config models.JSONB) error {
 	// Create a test notification message
 	message := &NotificationMessage{
-		Title:   "AlertBot Test Notification",
-		Content: testMessage,
-		Level:   "info",
-		ChannelConfig: map[string]interface{}{
-			"webhook_url": testMessage, // testMessage contains the webhook URL for testing
-		},
+		Title:         "AlertBot Test Notification",
+		Content:       testMessage,
+		Level:         "info",
+		ChannelConfig: config,
 	}
 
 	return w.Send(ctx, message)

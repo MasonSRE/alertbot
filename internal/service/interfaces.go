@@ -17,6 +17,8 @@ type AlertService interface {
 	BatchResolveAlerts(ctx context.Context, fingerprints []string, comment string) error
 	GetAlertHistory(ctx context.Context, fingerprint string) ([]models.AlertHistory, error)
 	ListAlertHistory(ctx context.Context, filters models.AlertHistoryFilters) ([]models.AlertHistory, int64, error)
+	GetAlertRelations(ctx context.Context, fingerprint string) (*models.AlertRelations, error)
+	UpdateDeduplicationConfig(ctx context.Context, config models.DeduplicationConfig) error
 }
 
 type RoutingRuleService interface {
@@ -47,4 +49,15 @@ type SilenceService interface {
 type StatsService interface {
 	GetAlertStats(ctx context.Context, startTime, endTime string, groupBy string) (*models.Stats, error)
 	GetNotificationStats(ctx context.Context, startTime, endTime string) (interface{}, error)
+}
+
+type SettingsService interface {
+	GetSystemConfig() (*models.SystemConfig, error)
+	UpdateSystemConfig(config *models.SystemConfig) error
+	
+	GetPrometheusConfig() (*models.PrometheusConfig, error)
+	UpdatePrometheusConfig(config *models.PrometheusConfig) error
+	
+	GetNotificationConfig() (*models.NotificationConfig, error)
+	UpdateNotificationConfig(config *models.NotificationConfig) error
 }

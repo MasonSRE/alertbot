@@ -12,6 +12,7 @@ import (
 	"alertbot/internal/api"
 	"alertbot/internal/config"
 	"alertbot/internal/monitor"
+	"alertbot/internal/monitoring"
 	"alertbot/internal/repository"
 	"alertbot/internal/service"
 	"alertbot/internal/websocket"
@@ -44,6 +45,19 @@ func main() {
 	systemMonitor := monitor.NewSystemMonitor(log, 30*time.Second)
 	go systemMonitor.Start()
 	
+	// Initialize monitoring services
+	monitoringService := monitoring.NewMonitoringService(repos, log, db)
+	backgroundMonitor := monitoring.NewBackgroundMonitor(repos, db, log)
+	
+	// Start monitoring services
+	if err := monitoringService.Start(context.Background()); err != nil {
+		log.WithError(err).Error("Failed to start monitoring service")
+	}
+	
+	if err := backgroundMonitor.Start(context.Background()); err != nil {
+		log.WithError(err).Error("Failed to start background monitor")
+	}
+	
 	services := service.NewServices(service.ServiceDependencies{
 		Repositories: repos,
 		Logger:       log,
@@ -55,7 +69,7 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	router := api.NewRouter(services, log, hub, cfg)
+	router := api.NewRouter(services, log, hub, cfg, monitoringService, backgroundMonitor)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
@@ -74,6 +88,10 @@ func main() {
 	<-quit
 
 	log.Info("Shutting down server...")
+	
+	// Stop monitoring services
+	monitoringService.Stop()
+	backgroundMonitor.Stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

@@ -3,6 +3,7 @@ package api
 import (
 	"alertbot/internal/config"
 	"alertbot/internal/middleware"
+	"alertbot/internal/monitoring"
 	"alertbot/internal/service"
 	"alertbot/internal/websocket"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket.Hub, cfg *config.Config) *gin.Engine {
+func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket.Hub, cfg *config.Config, monitoringService *monitoring.MonitoringService, backgroundMonitor *monitoring.BackgroundMonitor) *gin.Engine {
 	router := gin.New()
 
 	// 全局中间件 - 顺序很重要
@@ -57,10 +58,18 @@ func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket
 			alerts.PUT("/:fingerprint/ack", alertHandler.AcknowledgeAlert)
 			alerts.DELETE("/:fingerprint", alertHandler.ResolveAlert)
 			alerts.GET("/:fingerprint/history", alertHandler.GetAlertHistory)
+			alerts.GET("/:fingerprint/relations", alertHandler.GetAlertRelations)
 			// 批量操作路由
 			alerts.PUT("/batch/silence", alertHandler.BatchSilenceAlerts)
 			alerts.PUT("/batch/ack", alertHandler.BatchAcknowledgeAlerts)
 			alerts.DELETE("/batch/resolve", alertHandler.BatchResolveAlerts)
+		}
+		
+		// 告警去重配置路由
+		deduplication := v1.Group("/deduplication")
+		{
+			deduplication.GET("/config", alertHandler.GetDeduplicationConfig)
+			deduplication.PUT("/config", alertHandler.UpdateDeduplicationConfig)
 		}
 		
 		// 告警历史路由
@@ -147,8 +156,32 @@ func NewRouter(services *service.Services, logger *logrus.Logger, hub *websocket
 		// 系统健康检查路由
 		v1.GET("/health", statsHandler.GetHealthStatus)
 
+		// 监控相关路由
+		monitoringHandler := NewMonitoringHandler(monitoringService, backgroundMonitor)
+		monitoring := v1.Group("/monitoring")
+		{
+			monitoring.GET("/health", monitoringHandler.GetSystemHealth)
+			monitoring.GET("/health/simple", monitoringHandler.GetHealthCheck)
+			monitoring.GET("/health/ready", monitoringHandler.GetReadinessCheck)
+			monitoring.GET("/health/live", monitoringHandler.GetLivenessCheck)
+			monitoring.GET("/health/component/:component", monitoringHandler.GetComponentHealth)
+			monitoring.GET("/health/history", monitoringHandler.GetHealthHistory)
+			monitoring.POST("/health/trigger", monitoringHandler.TriggerHealthCheck)
+			
+			monitoring.GET("/metrics/summary", monitoringHandler.GetMetricsSummary)
+			monitoring.GET("/metrics/performance", monitoringHandler.GetPerformanceStats)
+			monitoring.GET("/metrics/system", monitoringHandler.GetSystemMetrics)
+			monitoring.GET("/metrics/export", monitoringHandler.ExportMetrics)
+			
+			monitoring.GET("/system/info", monitoringHandler.GetSystemInfo)
+			monitoring.GET("/alerts", monitoringHandler.GetAlerts)
+			
+			monitoring.GET("/config", monitoringHandler.GetMonitoringConfig)
+			monitoring.PUT("/config", monitoringHandler.UpdateMonitoringConfig)
+		}
+
 		// 设置相关路由
-		settingsHandler := NewSettingsHandler()
+		settingsHandler := NewSettingsHandler(services.Settings)
 		settings := v1.Group("/settings")
 		{
 			settings.GET("/system", settingsHandler.GetSystemSettings)

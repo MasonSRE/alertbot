@@ -2,19 +2,23 @@ package api
 
 import (
 	"net/http"
-	"net/url"
 	"time"
+
+	"alertbot/internal/models"
+	"alertbot/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 type SettingsHandler struct {
 	response *ResponseHelper
+	settings service.SettingsService
 }
 
-func NewSettingsHandler() *SettingsHandler {
+func NewSettingsHandler(settings service.SettingsService) *SettingsHandler {
 	return &SettingsHandler{
 		response: NewResponseHelper(),
+		settings: settings,
 	}
 }
 
@@ -45,14 +49,20 @@ type NotificationSettings struct {
 
 // GetSystemSettings retrieves system settings
 func (h *SettingsHandler) GetSystemSettings(c *gin.Context) {
-	// In a real implementation, these would be loaded from database or config
+	config, err := h.settings.GetSystemConfig()
+	if err != nil {
+		h.response.InternalServerError(c, "Failed to get system settings", err.Error())
+		return
+	}
+
+	// Convert to response format
 	settings := SystemSettings{
-		SystemName:          "AlertBot",
-		AdminEmail:          "admin@company.com",
-		RetentionDays:       30,
-		EnableNotifications: true,
-		EnableWebhooks:      true,
-		WebhookTimeout:      30,
+		SystemName:          config.SystemName,
+		AdminEmail:          config.AdminEmail,
+		RetentionDays:       config.RetentionDays,
+		EnableNotifications: config.EnableNotifications,
+		EnableWebhooks:      config.EnableWebhooks,
+		WebhookTimeout:      config.WebhookTimeout,
 	}
 
 	h.response.Success(c, settings, "System settings retrieved successfully")
@@ -66,22 +76,40 @@ func (h *SettingsHandler) UpdateSystemSettings(c *gin.Context) {
 		return
 	}
 
-	// In a real implementation, save to database or config file
-	// For now, just return success
+	// Convert to model
+	config := &models.SystemConfig{
+		SystemName:          settings.SystemName,
+		AdminEmail:          settings.AdminEmail,
+		RetentionDays:       settings.RetentionDays,
+		EnableNotifications: settings.EnableNotifications,
+		EnableWebhooks:      settings.EnableWebhooks,
+		WebhookTimeout:      settings.WebhookTimeout,
+	}
+
+	if err := h.settings.UpdateSystemConfig(config); err != nil {
+		h.response.BadRequest(c, "Failed to update system settings", err.Error())
+		return
+	}
 	
 	h.response.Success(c, settings, "System settings updated successfully")
 }
 
 // GetPrometheusSettings retrieves Prometheus settings
 func (h *SettingsHandler) GetPrometheusSettings(c *gin.Context) {
-	// In a real implementation, these would be loaded from database or config
+	config, err := h.settings.GetPrometheusConfig()
+	if err != nil {
+		h.response.InternalServerError(c, "Failed to get Prometheus settings", err.Error())
+		return
+	}
+
+	// Convert to response format
 	settings := PrometheusSettings{
-		Enabled:            true,
-		URL:                "http://localhost:9090",
-		Timeout:            30,
-		QueryTimeout:       30,
-		ScrapeInterval:     "15s",
-		EvaluationInterval: "15s",
+		Enabled:            config.Enabled,
+		URL:                config.URL,
+		Timeout:            config.Timeout,
+		QueryTimeout:       config.QueryTimeout,
+		ScrapeInterval:     config.ScrapeInterval,
+		EvaluationInterval: config.EvaluationInterval,
 	}
 
 	h.response.Success(c, settings, "Prometheus settings retrieved successfully")
@@ -95,31 +123,20 @@ func (h *SettingsHandler) UpdatePrometheusSettings(c *gin.Context) {
 		return
 	}
 
-	// Validate URL format
-	if settings.URL != "" {
-		if _, err := url.Parse(settings.URL); err != nil {
-			h.response.BadRequest(c, "Invalid Prometheus URL format", err.Error())
-			return
-		}
+	// Convert to model
+	config := &models.PrometheusConfig{
+		Enabled:            settings.Enabled,
+		URL:                settings.URL,
+		Timeout:            settings.Timeout,
+		QueryTimeout:       settings.QueryTimeout,
+		ScrapeInterval:     settings.ScrapeInterval,
+		EvaluationInterval: settings.EvaluationInterval,
 	}
 
-	// Validate interval formats
-	if settings.ScrapeInterval != "" {
-		if _, err := time.ParseDuration(settings.ScrapeInterval); err != nil {
-			h.response.BadRequest(c, "Invalid scrape_interval format", err.Error())
-			return
-		}
+	if err := h.settings.UpdatePrometheusConfig(config); err != nil {
+		h.response.BadRequest(c, "Failed to update Prometheus settings", err.Error())
+		return
 	}
-
-	if settings.EvaluationInterval != "" {
-		if _, err := time.ParseDuration(settings.EvaluationInterval); err != nil {
-			h.response.BadRequest(c, "Invalid evaluation_interval format", err.Error())
-			return
-		}
-	}
-
-	// In a real implementation, save to database or config file
-	// Also should restart Prometheus connection if URL changed
 	
 	h.response.Success(c, settings, "Prometheus settings updated successfully")
 }
@@ -166,12 +183,18 @@ func (h *SettingsHandler) TestPrometheusConnection(c *gin.Context) {
 
 // GetNotificationSettings retrieves notification settings
 func (h *SettingsHandler) GetNotificationSettings(c *gin.Context) {
-	// In a real implementation, these would be loaded from database or config
+	config, err := h.settings.GetNotificationConfig()
+	if err != nil {
+		h.response.InternalServerError(c, "Failed to get notification settings", err.Error())
+		return
+	}
+
+	// Convert to response format
 	settings := NotificationSettings{
-		MaxRetries:    3,
-		RetryInterval: 30,
-		RateLimit:     100,
-		BatchSize:     10,
+		MaxRetries:    config.MaxRetries,
+		RetryInterval: config.RetryInterval,
+		RateLimit:     config.RateLimit,
+		BatchSize:     config.BatchSize,
 	}
 
 	h.response.Success(c, settings, "Notification settings retrieved successfully")
@@ -185,8 +208,18 @@ func (h *SettingsHandler) UpdateNotificationSettings(c *gin.Context) {
 		return
 	}
 
-	// In a real implementation, save to database or config file
-	// Also should update notification service configuration
+	// Convert to model
+	config := &models.NotificationConfig{
+		MaxRetries:    settings.MaxRetries,
+		RetryInterval: settings.RetryInterval,
+		RateLimit:     settings.RateLimit,
+		BatchSize:     settings.BatchSize,
+	}
+
+	if err := h.settings.UpdateNotificationConfig(config); err != nil {
+		h.response.BadRequest(c, "Failed to update notification settings", err.Error())
+		return
+	}
 	
 	h.response.Success(c, settings, "Notification settings updated successfully")
 }

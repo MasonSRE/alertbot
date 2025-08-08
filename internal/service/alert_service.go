@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"alertbot/internal/engine"
 	"alertbot/internal/metrics"
 	"alertbot/internal/models"
 	"github.com/sirupsen/logrus"
@@ -39,6 +40,23 @@ func (s *alertService) ReceiveAlerts(ctx context.Context, prometheusAlerts []mod
 		}
 		metrics.RecordAlertReceived(status, severity)
 		alert := s.convertPrometheusAlert(promAlert)
+		
+		// Process alert through deduplication engine
+		var dedupResult *engine.DeduplicationResult
+		if s.deps.DeduplicationEngine != nil {
+			var err error
+			dedupResult, err = s.deps.DeduplicationEngine.ProcessAlert(ctx, alert)
+			if err != nil {
+				s.deps.Logger.WithError(err).WithField("alert_fingerprint", alert.Fingerprint).Error("Failed to process alert deduplication")
+				// Continue without deduplication if there's an error
+			}
+		}
+		
+		// Handle deduplication result
+		if dedupResult != nil && dedupResult.IsDuplicate {
+			s.handleDuplicateAlert(ctx, alert, dedupResult)
+			continue
+		}
 		
 		// 检查是否已存在
 		existingAlert, err := s.deps.Repositories.Alert.GetByFingerprint(alert.Fingerprint)
@@ -89,6 +107,11 @@ func (s *alertService) ReceiveAlerts(ctx context.Context, prometheusAlerts []mod
 			
 			// Record processing metric
 			metrics.RecordAlertProcessed("created", alert.Status)
+			
+			// Store deduplication metadata if available
+			if dedupResult != nil {
+				s.storeDeduplicationMetadata(alert, dedupResult)
+			}
 			
 			// Apply routing rules for new alerts
 			s.processAlertRouting(ctx, alert)
@@ -404,4 +427,211 @@ func (s *alertService) GetAlertHistory(ctx context.Context, fingerprint string) 
 // ListAlertHistory returns paginated alert history with optional filters
 func (s *alertService) ListAlertHistory(ctx context.Context, filters models.AlertHistoryFilters) ([]models.AlertHistory, int64, error) {
 	return s.deps.Repositories.AlertHistory.List(filters)
+}
+
+// handleDuplicateAlert processes duplicate alerts based on deduplication result
+func (s *alertService) handleDuplicateAlert(ctx context.Context, alert *models.Alert, dedupResult *engine.DeduplicationResult) {
+	if dedupResult.ExistingAlert == nil {
+		return
+	}
+
+	existingAlert := dedupResult.ExistingAlert
+	action := dedupResult.Action
+
+	s.deps.Logger.WithFields(logrus.Fields{
+		"alert_fingerprint":    alert.Fingerprint,
+		"existing_fingerprint": existingAlert.Fingerprint,
+		"action":              action,
+	}).Info("Processing duplicate alert")
+
+	switch action {
+	case "update_severity":
+		if s.shouldUpdateSeverity(alert, existingAlert) {
+			existingAlert.Severity = alert.Severity
+			existingAlert.UpdatedAt = time.Now()
+			s.deps.Repositories.Alert.Update(existingAlert)
+			
+			// Record severity update
+			s.recordAlertHistory(existingAlert.Fingerprint, "severity_updated", 
+				models.JSONB{"old_severity": existingAlert.Severity, "new_severity": alert.Severity})
+		}
+
+	case "update_status":
+		if existingAlert.Status != alert.Status {
+			existingAlert.Status = alert.Status
+			existingAlert.UpdatedAt = time.Now()
+			s.deps.Repositories.Alert.Update(existingAlert)
+			
+			// Record status update
+			s.recordAlertHistory(existingAlert.Fingerprint, "status_updated",
+				models.JSONB{"old_status": existingAlert.Status, "new_status": alert.Status})
+		}
+
+	case "refresh":
+		existingAlert.UpdatedAt = time.Now()
+		existingAlert.Annotations = alert.Annotations // Update annotations
+		s.deps.Repositories.Alert.Update(existingAlert)
+		
+		// Record refresh
+		s.recordAlertHistory(existingAlert.Fingerprint, "refreshed", models.JSONB{})
+
+	case "ignore":
+	default:
+		// Just record that we saw a duplicate
+		s.recordAlertHistory(existingAlert.Fingerprint, "duplicate_ignored", 
+			models.JSONB{"deduplication_key": dedupResult.DeduplicationKey})
+	}
+
+	// Update metrics
+	metrics.RecordAlertProcessed("deduplicated", existingAlert.Status)
+	
+	// Broadcast update if action was taken
+	if action != "ignore" && s.deps.WebSocketHub != nil {
+		s.deps.WebSocketHub.BroadcastAlertUpdate(existingAlert, "deduplicated")
+	}
+}
+
+// storeDeduplicationMetadata stores deduplication information in alert history
+func (s *alertService) storeDeduplicationMetadata(alert *models.Alert, dedupResult *engine.DeduplicationResult) {
+	details := models.JSONB{
+		"deduplication_key": dedupResult.DeduplicationKey,
+		"correlation_key":   dedupResult.CorrelationKey,
+		"related_count":     len(dedupResult.RelatedAlerts),
+	}
+
+	if len(dedupResult.RelatedAlerts) > 0 {
+		relatedFingerprints := make([]string, 0, len(dedupResult.RelatedAlerts))
+		for _, related := range dedupResult.RelatedAlerts {
+			relatedFingerprints = append(relatedFingerprints, related.Fingerprint)
+		}
+		details["related_fingerprints"] = relatedFingerprints
+	}
+
+	s.recordAlertHistory(alert.Fingerprint, "deduplication_processed", details)
+}
+
+// shouldUpdateSeverity determines if severity should be updated
+func (s *alertService) shouldUpdateSeverity(newAlert, existingAlert *models.Alert) bool {
+	severityOrder := map[string]int{
+		"info":     1,
+		"warning":  2,
+		"critical": 3,
+	}
+	
+	newLevel := severityOrder[newAlert.Severity]
+	existingLevel := severityOrder[existingAlert.Severity]
+	
+	return newLevel > existingLevel
+}
+
+// recordAlertHistory creates an alert history entry
+func (s *alertService) recordAlertHistory(fingerprint, action string, details models.JSONB) {
+	history := &models.AlertHistory{
+		AlertFingerprint: fingerprint,
+		Action:          action,
+		Details:         details,
+	}
+	
+	if err := s.deps.Repositories.AlertHistory.Create(history); err != nil {
+		s.deps.Logger.WithError(err).WithField("fingerprint", fingerprint).Error("Failed to record alert history")
+	}
+}
+
+// GetAlertRelations returns alert relationships and deduplication information
+func (s *alertService) GetAlertRelations(ctx context.Context, fingerprint string) (*models.AlertRelations, error) {
+	alert, err := s.deps.Repositories.Alert.GetByFingerprint(fingerprint)
+	if err != nil {
+		return nil, err
+	}
+
+	relations := &models.AlertRelations{
+		Alert: alert,
+	}
+
+	// Get deduplication information if deduplication engine is available
+	if s.deps.DeduplicationEngine != nil {
+		dedupResult, err := s.deps.DeduplicationEngine.ProcessAlert(ctx, alert)
+		if err != nil {
+			s.deps.Logger.WithError(err).WithField("fingerprint", fingerprint).Warn("Failed to get deduplication information")
+		} else {
+			relations.DeduplicationKey = dedupResult.DeduplicationKey
+			relations.CorrelationKey = dedupResult.CorrelationKey
+			relations.DeduplicationAction = dedupResult.Action
+			relations.RelatedAlerts = dedupResult.RelatedAlerts
+			
+			if dedupResult.IsDuplicate && dedupResult.ExistingAlert != nil {
+				relations.DuplicateOf = dedupResult.ExistingAlert
+			}
+		}
+	}
+
+	// Find duplicates of this alert
+	duplicates, err := s.findDuplicatesOf(ctx, fingerprint)
+	if err != nil {
+		s.deps.Logger.WithError(err).WithField("fingerprint", fingerprint).Warn("Failed to find duplicates")
+	} else {
+		relations.Duplicates = duplicates
+	}
+
+	return relations, nil
+}
+
+// findDuplicatesOf finds alerts that are duplicates of the given alert
+func (s *alertService) findDuplicatesOf(ctx context.Context, fingerprint string) ([]*models.Alert, error) {
+	// For now, use alert history to find duplicates
+	// This could be optimized with better indexing in the future
+	historyFilters := models.AlertHistoryFilters{
+		Action: "duplicate_ignored",
+		Size:   100,
+	}
+	
+	histories, _, err := s.deps.Repositories.AlertHistory.List(historyFilters)
+	if err != nil {
+		return nil, err
+	}
+
+	var duplicateFingerprints []string
+	for _, history := range histories {
+		if details, ok := history.Details["target_fingerprint"].(string); ok && details == fingerprint {
+			duplicateFingerprints = append(duplicateFingerprints, history.AlertFingerprint)
+		}
+	}
+
+	var duplicates []*models.Alert
+	for _, fp := range duplicateFingerprints {
+		if duplicate, err := s.deps.Repositories.Alert.GetByFingerprint(fp); err == nil {
+			duplicates = append(duplicates, duplicate)
+		}
+	}
+
+	return duplicates, nil
+}
+
+// UpdateDeduplicationConfig updates the deduplication engine configuration
+func (s *alertService) UpdateDeduplicationConfig(ctx context.Context, config models.DeduplicationConfig) error {
+	if s.deps.DeduplicationEngine == nil {
+		return fmt.Errorf("deduplication engine not available")
+	}
+
+	// Convert models.DeduplicationConfig to engine.DeduplicationConfig
+	engineConfig := engine.DeduplicationConfig{
+		DeduplicationWindow:     config.DeduplicationWindow,
+		IgnoreLabels:           config.IgnoreLabels,
+		CorrelationLabels:      config.CorrelationLabels,
+		CorrelationWindow:      config.CorrelationWindow,
+		MaxRelatedAlerts:       config.MaxRelatedAlerts,
+		EnableTimeBasedDedup:   config.EnableTimeBasedDedup,
+		EnableContentBasedDedup: config.EnableContentBasedDedup,
+		EnableCorrelation:      config.EnableCorrelation,
+	}
+
+	s.deps.DeduplicationEngine.UpdateDeduplicationConfig(engineConfig)
+	
+	s.deps.Logger.WithFields(logrus.Fields{
+		"deduplication_window": config.DeduplicationWindow,
+		"correlation_window":   config.CorrelationWindow,
+		"max_related_alerts":   config.MaxRelatedAlerts,
+	}).Info("Deduplication configuration updated")
+
+	return nil
 }

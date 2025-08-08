@@ -3,6 +3,8 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"alertbot/internal/models"
@@ -61,6 +63,8 @@ func (h *NotificationChannelHandler) CreateChannel(c *gin.Context) {
 		models.ChannelTypeWeChatWork,
 		models.ChannelTypeEmail,
 		models.ChannelTypeSMS,
+		models.ChannelTypeTelegram,
+		models.ChannelTypeSlack,
 	}
 
 	validType := false
@@ -239,6 +243,10 @@ func (h *NotificationChannelHandler) validateChannelConfig(channelType models.No
 		return h.validateEmailConfig(config)
 	case models.ChannelTypeSMS:
 		return h.validateSMSConfig(config)
+	case models.ChannelTypeTelegram:
+		return h.validateTelegramConfig(config)
+	case models.ChannelTypeSlack:
+		return h.validateSlackConfig(config)
 	default:
 		return fmt.Errorf("unsupported channel type: %s", channelType)
 	}
@@ -349,7 +357,7 @@ func (h *NotificationChannelHandler) maskSensitiveConfig(channel models.Notifica
 	}
 
 	// Mask sensitive fields
-	sensitiveFields := []string{"password", "secret", "auth_token", "access_key", "api_key"}
+	sensitiveFields := []string{"password", "secret", "auth_token", "access_key", "api_key", "bot_token"}
 	
 	for _, field := range sensitiveFields {
 		if _, exists := maskedConfig[field]; exists {
@@ -359,4 +367,60 @@ func (h *NotificationChannelHandler) maskSensitiveConfig(channel models.Notifica
 
 	channel.Config = maskedConfig
 	return channel
+}
+
+// validateTelegramConfig validates Telegram channel configuration
+func (h *NotificationChannelHandler) validateTelegramConfig(config models.JSONB) error {
+	botToken, ok := config["bot_token"].(string)
+	if !ok || botToken == "" {
+		return fmt.Errorf("bot_token is required for Telegram channels")
+	}
+
+	if !strings.Contains(botToken, ":") {
+		return fmt.Errorf("invalid bot_token format")
+	}
+
+	chatID, ok := config["chat_id"].(string)
+	if !ok || chatID == "" {
+		return fmt.Errorf("chat_id is required for Telegram channels")
+	}
+
+	// Validate chat_id format (should be numeric ID or channel username starting with @)
+	if !strings.HasPrefix(chatID, "@") {
+		if _, err := strconv.ParseInt(chatID, 10, 64); err != nil {
+			return fmt.Errorf("chat_id must be a numeric ID or channel username starting with @")
+		}
+	}
+
+	return nil
+}
+
+// validateSlackConfig validates Slack channel configuration
+func (h *NotificationChannelHandler) validateSlackConfig(config models.JSONB) error {
+	webhookURL, ok := config["webhook_url"].(string)
+	if !ok || webhookURL == "" {
+		return fmt.Errorf("webhook_url is required for Slack channels")
+	}
+
+	// Validate webhook URL format
+	if _, err := url.Parse(webhookURL); err != nil {
+		return fmt.Errorf("invalid webhook_url format")
+	}
+
+	// Check if it's a Slack webhook URL
+	if !strings.Contains(webhookURL, "hooks.slack.com") {
+		return fmt.Errorf("webhook_url must be a valid Slack webhook URL")
+	}
+
+	channel, ok := config["channel"].(string)
+	if !ok || channel == "" {
+		return fmt.Errorf("channel is required for Slack channels")
+	}
+
+	// Validate channel format (should start with # for public channels or @ for DMs)
+	if !strings.HasPrefix(channel, "#") && !strings.HasPrefix(channel, "@") {
+		return fmt.Errorf("channel must start with # (public channel) or @ (direct message)")
+	}
+
+	return nil
 }

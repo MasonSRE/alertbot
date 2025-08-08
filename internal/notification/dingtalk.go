@@ -88,17 +88,10 @@ func (d *DingTalkChannel) Send(ctx context.Context, message *NotificationMessage
 }
 
 func (d *DingTalkChannel) Test(ctx context.Context, testMessage string) error {
-	// Create a test notification message
-	message := &NotificationMessage{
-		Title:   "AlertBot Test Notification",
-		Content: testMessage,
-		Level:   "info",
-		ChannelConfig: map[string]interface{}{
-			"webhook_url": testMessage, // testMessage contains the webhook URL for testing
-		},
-	}
-
-	return d.Send(ctx, message)
+	// DingTalk Test method should not be called directly from API layer
+	// The old design expected testMessage to contain webhook URL, but API passes actual message
+	// This method should only be called with proper configuration
+	return fmt.Errorf("DingTalk Test method requires configuration. Use service layer with proper channel config instead")
 }
 
 func (d *DingTalkChannel) formatMessage(message *NotificationMessage) *DingTalkMessage {

@@ -66,6 +66,8 @@ func NewNotificationManager(logger *logrus.Logger) *NotificationManager {
 	nm.channels[models.ChannelTypeWeChatWork] = NewWeChatWorkChannel(logger)
 	nm.channels[models.ChannelTypeEmail] = NewEmailChannel(logger)
 	nm.channels[models.ChannelTypeSMS] = NewSMSChannel(logger)
+	nm.channels[models.ChannelTypeTelegram] = NewTelegramChannel(logger)
+	nm.channels[models.ChannelTypeSlack] = NewSlackChannel(logger)
 
 	return nm
 }
@@ -120,6 +122,11 @@ func (nm *NotificationManager) TestChannel(ctx context.Context, channelType mode
 		return errors.NewNotFoundError("notification channel", string(channelType))
 	}
 
+	// Special handling for channels that expect configuration in test message
+	if channelType == models.ChannelTypeWeChatWork || channelType == models.ChannelTypeDingTalk {
+		return fmt.Errorf("channel type %s requires configuration-based testing. Use TestChannelWithConfig instead", channelType)
+	}
+
 	// Use simple retry for testing (no circuit breaker)
 	testRetryConfig := recovery.RetryConfig{
 		MaxAttempts:   2,
@@ -135,6 +142,54 @@ func (nm *NotificationManager) TestChannel(ctx context.Context, channelType mode
 
 	return recovery.Retry(ctx, testRetryConfig, func(ctx context.Context) error {
 		return channel.Test(ctx, testMessage)
+	})
+}
+
+// TestChannelWithConfig tests a notification channel with specific configuration
+func (nm *NotificationManager) TestChannelWithConfig(ctx context.Context, channelType models.NotificationChannelType, testMessage string, config models.JSONB) error {
+	// Use simple retry for testing (no circuit breaker)
+	testRetryConfig := recovery.RetryConfig{
+		MaxAttempts:   2,
+		InitialDelay:  500 * time.Millisecond,
+		MaxDelay:      2 * time.Second,
+		BackoffFactor: 1.5,
+		Jitter:        false,
+		RetryCondition: func(err error) bool {
+			return recovery.IsRetryable(err)
+		},
+		Logger: nm.logger,
+	}
+
+	return recovery.Retry(ctx, testRetryConfig, func(ctx context.Context) error {
+		// Handle different channel types that need configuration
+		switch channelType {
+		case models.ChannelTypeWeChatWork:
+			wechatChannel, ok := nm.channels[channelType].(*WeChatWorkChannel)
+			if !ok {
+				return fmt.Errorf("invalid WeChat Work channel type")
+			}
+			return wechatChannel.TestWithConfig(ctx, testMessage, config)
+		case models.ChannelTypeDingTalk:
+			// For DingTalk, create a test message with proper config
+			dingTalkChannel, ok := nm.channels[channelType].(*DingTalkChannel)
+			if !ok {
+				return fmt.Errorf("invalid DingTalk channel type")
+			}
+			// Create proper notification message for DingTalk
+			message := &NotificationMessage{
+				Title:         "AlertBot Test Notification",
+				Content:       testMessage,
+				Level:         "info",
+				ChannelConfig: config,
+			}
+			return dingTalkChannel.Send(ctx, message)
+		default:
+			// For other channel types, use the regular Test method
+			if channel, exists := nm.channels[channelType]; exists {
+				return channel.Test(ctx, testMessage)
+			}
+			return errors.NewNotFoundError("notification channel", string(channelType))
+		}
 	})
 }
 

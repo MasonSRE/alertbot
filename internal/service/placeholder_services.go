@@ -89,7 +89,14 @@ func (s *notificationChannelService) TestChannel(ctx context.Context, id uint, m
 		return fmt.Errorf("notification manager not available")
 	}
 
-	return s.deps.NotificationManager.TestChannel(ctx, models.NotificationChannelType(channel.Type), message)
+	// For channels that require configuration (WeChat Work, DingTalk), use TestChannelWithConfig
+	channelType := models.NotificationChannelType(channel.Type)
+	if channelType == models.ChannelTypeWeChatWork || channelType == models.ChannelTypeDingTalk {
+		return s.deps.NotificationManager.TestChannelWithConfig(ctx, channelType, message, channel.Config)
+	}
+
+	// For other channel types, use the regular TestChannel method
+	return s.deps.NotificationManager.TestChannel(ctx, channelType, message)
 }
 
 type silenceService struct {

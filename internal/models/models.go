@@ -135,6 +135,8 @@ const (
 	ChannelTypeWeChatWork NotificationChannelType = "wechat_work"
 	ChannelTypeEmail      NotificationChannelType = "email"
 	ChannelTypeSMS        NotificationChannelType = "sms"
+	ChannelTypeTelegram   NotificationChannelType = "telegram"
+	ChannelTypeSlack      NotificationChannelType = "slack"
 )
 
 // AlertGroup represents a group of alerts that share common characteristics
@@ -207,4 +209,79 @@ type Stats struct {
 		Timestamp string `json:"timestamp"`
 		Count     int    `json:"count"`
 	} `json:"timeline"`
+}
+
+// SystemConfig stores system-wide configuration settings
+type SystemConfig struct {
+	ID                  uint      `json:"id" gorm:"primaryKey"`
+	SystemName          string    `json:"system_name" gorm:"size:255;not null"`
+	AdminEmail          string    `json:"admin_email" gorm:"size:255;not null"`
+	RetentionDays       int       `json:"retention_days" gorm:"not null;default:30"`
+	EnableNotifications bool      `json:"enable_notifications" gorm:"default:true"`
+	EnableWebhooks      bool      `json:"enable_webhooks" gorm:"default:true"`
+	WebhookTimeout      int       `json:"webhook_timeout" gorm:"default:30"`
+	CreatedAt           time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt           time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+// PrometheusConfig stores Prometheus integration configuration
+type PrometheusConfig struct {
+	ID                 uint      `json:"id" gorm:"primaryKey"`
+	Enabled            bool      `json:"enabled" gorm:"default:true"`
+	URL                string    `json:"url" gorm:"size:255;not null"`
+	Timeout            int       `json:"timeout" gorm:"default:30"`
+	QueryTimeout       int       `json:"query_timeout" gorm:"default:30"`
+	ScrapeInterval     string    `json:"scrape_interval" gorm:"size:20;default:'15s'"`
+	EvaluationInterval string    `json:"evaluation_interval" gorm:"size:20;default:'15s'"`
+	CreatedAt          time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt          time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+// NotificationConfig stores global notification configuration
+type NotificationConfig struct {
+	ID            uint      `json:"id" gorm:"primaryKey"`
+	MaxRetries    int       `json:"max_retries" gorm:"default:3"`
+	RetryInterval int       `json:"retry_interval" gorm:"default:30"`
+	RateLimit     int       `json:"rate_limit" gorm:"default:100"`
+	BatchSize     int       `json:"batch_size" gorm:"default:10"`
+	CreatedAt     time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt     time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+// AlertRelations contains information about alert relationships and deduplication
+type AlertRelations struct {
+	Alert               *Alert   `json:"alert"`
+	DuplicateOf         *Alert   `json:"duplicate_of,omitempty"`
+	Duplicates          []*Alert `json:"duplicates,omitempty"`
+	RelatedAlerts       []*Alert `json:"related_alerts,omitempty"`
+	DeduplicationKey    string   `json:"deduplication_key"`
+	CorrelationKey      string   `json:"correlation_key"`
+	DeduplicationAction string   `json:"deduplication_action"`
+}
+
+// DeduplicationConfig contains configuration for alert deduplication
+type DeduplicationConfig struct {
+	// Time window for deduplication (alerts within this window are considered duplicates)
+	DeduplicationWindow time.Duration `json:"deduplication_window"`
+	
+	// Labels to ignore when generating fingerprints
+	IgnoreLabels []string `json:"ignore_labels"`
+	
+	// Labels that must match for correlation
+	CorrelationLabels []string `json:"correlation_labels"`
+	
+	// Time window for correlation (alerts within this window can be correlated)
+	CorrelationWindow time.Duration `json:"correlation_window"`
+	
+	// Maximum number of related alerts to track
+	MaxRelatedAlerts int `json:"max_related_alerts"`
+	
+	// Enable time-based deduplication
+	EnableTimeBasedDedup bool `json:"enable_time_based_dedup"`
+	
+	// Enable content-based deduplication
+	EnableContentBasedDedup bool `json:"enable_content_based_dedup"`
+	
+	// Enable alert correlation
+	EnableCorrelation bool `json:"enable_correlation"`
 }

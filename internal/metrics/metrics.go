@@ -191,6 +191,116 @@ var (
 			Help: "Number of goroutines",
 		},
 	)
+
+	// Deduplication metrics
+	DeduplicationProcessed = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "alertbot_deduplication_processed_total",
+			Help: "Total number of alerts processed by deduplication engine",
+		},
+		[]string{"action"}, // create, update_severity, update_status, refresh, ignore
+	)
+
+	DeduplicationDuplicatesFound = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "alertbot_deduplication_duplicates_found_total",
+			Help: "Total number of duplicate alerts found",
+		},
+		[]string{"deduplication_type"}, // time_based, content_based
+	)
+
+	DeduplicationCorrelationsFound = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "alertbot_deduplication_correlations_found_total",
+			Help: "Total number of alert correlations found",
+		},
+	)
+
+	DeduplicationProcessingDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "alertbot_deduplication_processing_duration_seconds",
+			Help:    "Time spent processing deduplication in seconds",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0},
+		},
+	)
+
+	ActiveDeduplicationWindows = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "alertbot_active_deduplication_windows",
+			Help: "Number of active deduplication windows",
+		},
+	)
+
+	// Service health metrics
+	ServiceHealth = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "alertbot_service_health",
+			Help: "Health status of various services (1=healthy, 0=unhealthy)",
+		},
+		[]string{"service"}, // database, notification, websocket, rule_engine
+	)
+
+	ServiceResponseTime = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "alertbot_service_response_time_seconds",
+			Help:    "Response time of various services",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0},
+		},
+		[]string{"service"},
+	)
+
+	// API endpoint metrics
+	APIEndpointRequests = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "alertbot_api_endpoint_requests_total",
+			Help: "Total number of requests per API endpoint",
+		},
+		[]string{"endpoint", "method", "status"},
+	)
+
+	APIEndpointDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "alertbot_api_endpoint_duration_seconds",
+			Help:    "API endpoint response time",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0},
+		},
+		[]string{"endpoint", "method"},
+	)
+
+	// Validation and security metrics
+	ValidationErrors = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "alertbot_validation_errors_total",
+			Help: "Total number of validation errors",
+		},
+		[]string{"type", "field"},
+	)
+
+	SecurityEvents = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "alertbot_security_events_total",
+			Help: "Total number of security events",
+		},
+		[]string{"event_type"}, // rate_limit, invalid_auth, suspicious_request
+	)
+
+	// Background job metrics
+	BackgroundJobs = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "alertbot_background_jobs_total",
+			Help: "Total number of background jobs executed",
+		},
+		[]string{"job_name", "status"}, // success, error, timeout
+	)
+
+	BackgroundJobDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "alertbot_background_job_duration_seconds",
+			Help:    "Background job execution duration",
+			Buckets: []float64{0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0},
+		},
+		[]string{"job_name"},
+	)
 )
 
 // RecordHTTPRequest records HTTP request metrics
@@ -293,4 +403,65 @@ func UpdateMemoryUsage(memType string, bytes float64) {
 // UpdateGoroutineCount updates goroutine count
 func UpdateGoroutineCount(count float64) {
 	GoroutineCount.Set(count)
+}
+
+// RecordDeduplicationProcessed records deduplication processed metrics
+func RecordDeduplicationProcessed(action string) {
+	DeduplicationProcessed.WithLabelValues(action).Inc()
+}
+
+// RecordDeduplicationDuplicate records duplicate found metrics
+func RecordDeduplicationDuplicate(deduplicationType string) {
+	DeduplicationDuplicatesFound.WithLabelValues(deduplicationType).Inc()
+}
+
+// RecordDeduplicationCorrelation records correlation found metrics
+func RecordDeduplicationCorrelation() {
+	DeduplicationCorrelationsFound.Inc()
+}
+
+// RecordDeduplicationDuration records deduplication processing duration
+func RecordDeduplicationDuration(duration float64) {
+	DeduplicationProcessingDuration.Observe(duration)
+}
+
+// UpdateActiveDeduplicationWindows updates active deduplication windows gauge
+func UpdateActiveDeduplicationWindows(count float64) {
+	ActiveDeduplicationWindows.Set(count)
+}
+
+// UpdateServiceHealth updates service health status
+func UpdateServiceHealth(service string, healthy bool) {
+	value := 0.0
+	if healthy {
+		value = 1.0
+	}
+	ServiceHealth.WithLabelValues(service).Set(value)
+}
+
+// RecordServiceResponseTime records service response time
+func RecordServiceResponseTime(service string, duration float64) {
+	ServiceResponseTime.WithLabelValues(service).Observe(duration)
+}
+
+// RecordAPIEndpointRequest records API endpoint request metrics
+func RecordAPIEndpointRequest(endpoint, method, status string, duration float64) {
+	APIEndpointRequests.WithLabelValues(endpoint, method, status).Inc()
+	APIEndpointDuration.WithLabelValues(endpoint, method).Observe(duration)
+}
+
+// RecordValidationError records validation error metrics
+func RecordValidationError(validationType, field string) {
+	ValidationErrors.WithLabelValues(validationType, field).Inc()
+}
+
+// RecordSecurityEvent records security event metrics
+func RecordSecurityEvent(eventType string) {
+	SecurityEvents.WithLabelValues(eventType).Inc()
+}
+
+// RecordBackgroundJob records background job metrics
+func RecordBackgroundJob(jobName, status string, duration float64) {
+	BackgroundJobs.WithLabelValues(jobName, status).Inc()
+	BackgroundJobDuration.WithLabelValues(jobName).Observe(duration)
 }

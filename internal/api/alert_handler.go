@@ -278,3 +278,81 @@ func (h *AlertHandler) ListAlertHistory(c *gin.Context) {
 
 	h.response.Paginated(c, history, total, page, size, "Alert history retrieved successfully")
 }
+
+// GetAlertRelations retrieves alert relationships and deduplication information
+func (h *AlertHandler) GetAlertRelations(c *gin.Context) {
+	fingerprint := c.Param("fingerprint")
+	if fingerprint == "" {
+		h.response.BadRequest(c, "Alert fingerprint is required", nil)
+		return
+	}
+
+	relations, err := h.services.Alert.GetAlertRelations(c.Request.Context(), fingerprint)
+	if err != nil {
+		h.response.InternalServerError(c, "Failed to retrieve alert relations", err.Error())
+		return
+	}
+
+	h.response.Success(c, relations, "Alert relations retrieved successfully")
+}
+
+// UpdateDeduplicationConfig updates the deduplication engine configuration
+func (h *AlertHandler) UpdateDeduplicationConfig(c *gin.Context) {
+	var config models.DeduplicationConfig
+	if !h.response.BindAndValidate(c, &config) {
+		return
+	}
+
+	// Validate configuration values
+	if config.DeduplicationWindow <= 0 {
+		h.response.BadRequest(c, "Deduplication window must be greater than 0", nil)
+		return
+	}
+
+	if config.CorrelationWindow <= 0 {
+		h.response.BadRequest(c, "Correlation window must be greater than 0", nil)
+		return
+	}
+
+	if config.MaxRelatedAlerts < 1 {
+		h.response.BadRequest(c, "Max related alerts must be at least 1", nil)
+		return
+	}
+
+	err := h.services.Alert.UpdateDeduplicationConfig(c.Request.Context(), config)
+	if err != nil {
+		h.response.InternalServerError(c, "Failed to update deduplication configuration", err.Error())
+		return
+	}
+
+	h.response.Success(c, config, "Deduplication configuration updated successfully")
+}
+
+// GetDeduplicationConfig retrieves the current deduplication configuration
+func (h *AlertHandler) GetDeduplicationConfig(c *gin.Context) {
+	// Return the default/current configuration
+	// This could be enhanced to store configuration in database
+	defaultConfig := models.DeduplicationConfig{
+		DeduplicationWindow:     5 * 60000000000,  // 5 minutes in nanoseconds
+		CorrelationWindow:      30 * 60000000000,  // 30 minutes in nanoseconds
+		MaxRelatedAlerts:       10,
+		EnableTimeBasedDedup:   true,
+		EnableContentBasedDedup: true,
+		EnableCorrelation:      true,
+		IgnoreLabels: []string{
+			"__name__",
+			"__tmp_",
+			"timestamp",
+			"receive_timestamp",
+		},
+		CorrelationLabels: []string{
+			"instance",
+			"job",
+			"service",
+			"cluster",
+			"node",
+		},
+	}
+
+	h.response.Success(c, defaultConfig, "Deduplication configuration retrieved successfully")
+}

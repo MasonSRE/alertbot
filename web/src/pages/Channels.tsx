@@ -25,6 +25,8 @@ const Channels: React.FC = () => {
     { label: '企业微信', value: 'wechat_work' },
     { label: '邮件', value: 'email' },
     { label: '短信', value: 'sms' },
+    { label: 'Telegram', value: 'telegram' },
+    { label: 'Slack', value: 'slack' },
   ]
 
   const getChannelTypeLabel = (type: string) => {
@@ -38,6 +40,8 @@ const Channels: React.FC = () => {
       wechat_work: 'green',
       email: 'orange',
       sms: 'purple',
+      telegram: 'cyan',
+      slack: 'magenta',
     }
     return colors[type] || 'default'
   }
@@ -252,7 +256,7 @@ const Channels: React.FC = () => {
               placeholder="请选择渠道类型"
               onChange={(value) => {
                 setSelectedChannelType(value)
-                form.resetFields(['webhook_url', 'secret', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'from', 'to', 'corp_id', 'corp_secret', 'agent_id', 'api_key', 'template_id', 'sign_name'])
+                form.resetFields(['webhook_url', 'secret', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'from', 'to', 'corp_id', 'corp_secret', 'agent_id', 'api_key', 'template_id', 'sign_name', 'bot_token', 'chat_id', 'channel', 'username'])
               }}
             >
               {channelTypeOptions.map(option => (
@@ -370,6 +374,52 @@ const Channels: React.FC = () => {
                 rules={[{ required: true, message: '请输入接收手机号' }]}
               >
                 <Input placeholder="13800138000,13900139000" />
+              </Form.Item>
+            </>
+          )}
+
+          {/* Telegram配置 */}
+          {selectedChannelType === 'telegram' && (
+            <>
+              <Form.Item
+                name="bot_token"
+                label="Bot Token"
+                rules={[{ required: true, message: '请输入Telegram Bot Token' }]}
+              >
+                <Input.Password placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ..." />
+              </Form.Item>
+              <Form.Item
+                name="chat_id"
+                label="Chat ID"
+                rules={[{ required: true, message: '请输入Chat ID或频道用户名' }]}
+              >
+                <Input placeholder="@channel_name 或 -1001234567890" />
+              </Form.Item>
+            </>
+          )}
+
+          {/* Slack配置 */}
+          {selectedChannelType === 'slack' && (
+            <>
+              <Form.Item
+                name="webhook_url"
+                label="Webhook URL"
+                rules={[{ required: true, message: '请输入Slack Webhook URL' }]}
+              >
+                <Input placeholder="https://hooks.slack.com/services/..." />
+              </Form.Item>
+              <Form.Item
+                name="channel"
+                label="频道"
+                rules={[{ required: true, message: '请输入Slack频道名称' }]}
+              >
+                <Input placeholder="#alerts 或 @username" />
+              </Form.Item>
+              <Form.Item
+                name="username"
+                label="机器人用户名"
+              >
+                <Input placeholder="AlertBot" />
               </Form.Item>
             </>
           )}
