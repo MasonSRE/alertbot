@@ -83,6 +83,11 @@ type AlertHistory struct {
 	CreatedAt        time.Time `json:"created_at" gorm:"autoCreateTime"`
 }
 
+// TableName specifies the table name for AlertHistory model
+func (AlertHistory) TableName() string {
+	return "alert_history"
+}
+
 type AlertFilters struct {
 	Status    string `json:"status" form:"status"`
 	Severity  string `json:"severity" form:"severity"`

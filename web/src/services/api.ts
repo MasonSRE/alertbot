@@ -34,7 +34,23 @@ api.interceptors.response.use(
       localStorage.removeItem('token')
       window.location.href = '/login'
     }
-    return Promise.reject(error)
+    
+    // Extract error message from response if available
+    let errorMessage = 'Network error'
+    if (error.response?.data?.error?.message) {
+      errorMessage = error.response.data.error.message
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    
+    // Create a new error with the extracted message
+    const enhancedError = new Error(errorMessage)
+    ;(enhancedError as any).response = error.response
+    ;(enhancedError as any).status = error.response?.status
+    
+    return Promise.reject(enhancedError)
   }
 )
 
